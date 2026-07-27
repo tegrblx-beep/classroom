@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chalkline — Classrooms &amp; Tests</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --chalk-dark:#2F4538;
+    --chalk-darker:#223228;
+    --paper:#F7F4EC;
+    --paper-dim:#EFEAD9;
+    --ink:#26302A;
+    --marker-blue:#3B6EA5;
+    --marker-blue-dim:#e7eef5;
+    --marker-red:#C6503E;
+    --marker-red-dim:#f7e9e6;
+    --marker-yellow:#D89B2E;
+    --marker-yellow-dim:#faf0dc;
+    --marker-purple:#7A5FA3;
+    --marker-purple-dim:#efe9f5;
+    --marker-green:#4f8f5f;
+    --marker-green-dim:#e8f3ea;
+    --marker-teal:#2f7a72;
+    --marker-teal-dim:#e5f2f0;
+    --muted:#818979;
+    --line:#D8D2C0;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    font-size:15px;
+    line-height:1.5;
+    min-height:100vh;
+  }
+  h1,h2,h3,.display{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    letter-spacing:-0.01em;
+    color:var(--chalk-darker);
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  #app{min-height:100vh;display:flex;flex-direction:column;}
+  a{color:inherit;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select,textarea{font-family:inherit;font-size:14px;}
+
+  .topbar{
+    background:var(--chalk-dark);
+    color:var(--paper);
+    padding:14px 28px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-family:'Space Grotesk';font-weight:700;font-size:18px;color:#fff;}
+  .brand .dot-line{display:inline-flex;gap:3px;}
+  .brand .dot-line span{width:5px;height:5px;border-radius:50%;background:var(--marker-yellow);display:inline-block;}
+  .topbar .who{font-size:13px;color:#cfd8cd;display:flex;align-items:center;gap:14px;}
+  .topbar button.link{background:none;border:1px solid rgba(255,255,255,0.35);color:#fff;padding:6px 12px;border-radius:8px;font-size:13px;}
+  .topbar button.link:hover{background:rgba(255,255,255,0.12);}
+
+  main{flex:1;width:100%;max-width:1040px;margin:0 auto;padding:34px 24px 80px;}
+
+  .crumbs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-bottom:14px;}
+  .crumbs button{background:none;border:none;color:var(--muted);font-size:13px;padding:0;font-weight:600;}
+  .crumbs button:hover{color:var(--marker-blue);}
+  .crumbs .sep{color:var(--line);}
+  .crumbs .current{color:var(--ink);font-weight:600;}
+
+  .landing-hero{text-align:center;padding:60px 20px 20px;}
+  .landing-hero h1{font-size:44px;margin:0 0 10px;}
+  .landing-hero p{color:var(--muted);font-size:16px;max-width:480px;margin:0 auto 36px;}
+  .portal-choice{display:flex;gap:20px;justify-content:center;flex-wrap:wrap;}
+  .portal-card{
+    background:#fff;border:1px solid var(--line);border-radius:16px;
+    padding:32px 30px;width:260px;text-align:left;transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .portal-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(47,69,56,0.12);}
+  .portal-card .icon{font-size:26px;margin-bottom:10px;}
+  .portal-card h3{margin:0 0 6px;font-size:19px;}
+  .portal-card p{color:var(--muted);font-size:13.5px;margin:0 0 18px;}
+  .portal-card button{width:100%;}
+
+  .btn{
+    border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:600;
+    display:inline-flex;align-items:center;gap:6px;justify-content:center;
+  }
+  .btn-primary{background:var(--chalk-dark);color:#fff;}
+  .btn-primary:hover{background:var(--chalk-darker);}
+  .btn-blue{background:var(--marker-blue);color:#fff;}
+  .btn-blue:hover{opacity:.9;}
+  .btn-outline{background:#fff;border:1px solid var(--line);color:var(--ink);}
+  .btn-outline:hover{border-color:var(--chalk-dark);}
+  .btn-danger{background:var(--marker-red-dim);color:var(--marker-red);}
+  .btn-danger:hover{background:#f2d9d4;}
+  .btn-sm{padding:6px 12px;font-size:12.5px;border-radius:7px;}
+  .btn-full{width:100%;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  .auth-wrap{max-width:380px;margin:20px auto;}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px;}
+  .card h2{margin-top:0;font-size:21px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.03em;}
+  .field input,.field select,.field textarea{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--paper);
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--marker-blue);outline-offset:1px;border-color:var(--marker-blue);}
+  .auth-switch{text-align:center;margin-top:14px;font-size:13.5px;color:var(--muted);}
+  .auth-switch button{background:none;border:none;color:var(--marker-blue);font-weight:600;text-decoration:underline;padding:0;}
+  .error-msg{background:var(--marker-red-dim);color:var(--marker-red);padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:14px;}
+  .back-link{background:none;border:none;color:var(--muted);font-size:13.5px;margin-bottom:18px;display:inline-flex;align-items:center;gap:5px;}
+  .back-link:hover{color:var(--ink);}
+
+  .page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+  .page-head h1{font-size:26px;margin:0;}
+  .empty-state{border:1.5px dashed var(--line);border-radius:14px;padding:44px 20px;text-align:center;color:var(--muted);}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px;}
+  .tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;}
+  .tile.clickable{cursor:pointer;transition:box-shadow .15s ease, transform .15s ease;}
+  .tile.clickable:hover{box-shadow:0 8px 18px rgba(47,69,56,0.1);transform:translateY(-2px);}
+  .tile h3{margin:0 0 4px;font-size:17px;}
+  .tile .meta{color:var(--muted);font-size:12.5px;margin-bottom:12px;}
+  .tile .subject-icon{font-size:22px;margin-bottom:8px;}
+  .code-pill{
+    display:inline-flex;align-items:center;gap:6px;background:var(--marker-yellow-dim);color:#8a6412;
+    font-family:'JetBrains Mono';font-weight:700;padding:4px 10px;border-radius:7px;font-size:13px;letter-spacing:.04em;
+  }
+  .tile-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+
+  .dot-rule{
+    height:1px;background-image:repeating-linear-gradient(90deg, var(--line) 0 6px, transparent 6px 12px);
+    margin:10px 0;
+  }
+  .list-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:10px;}
+
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px;}
+  .tabs button{background:none;border:none;padding:10px 4px;margin-right:22px;font-size:14px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;}
+  .tabs button.active{color:var(--chalk-darker);border-bottom-color:var(--marker-blue);}
+
+  .material-row{display:flex;align-items:center;gap:12px;padding:13px 0;}
+  .material-icon{
+    width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+    font-size:17px;flex-shrink:0;
+  }
+  .material-icon.slides{background:var(--marker-red-dim);}
+  .material-icon.doc{background:var(--marker-blue-dim);}
+  .material-icon.video{background:var(--marker-purple-dim);}
+  .material-icon.link{background:var(--marker-yellow-dim);}
+  .material-info{flex:1;min-width:0;}
+  .material-info .mtitle{font-weight:600;font-size:14.5px;}
+  .material-info .murl{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .material-type-select{display:flex;gap:8px;flex-wrap:wrap;}
+  .type-chip{border:1.5px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;background:#fff;color:var(--muted);}
+  .type-chip.active{border-color:var(--marker-blue);color:var(--marker-blue);background:var(--marker-blue-dim);}
+
+  .qcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:14px;position:relative;}
+  .qcard .qtype-badge{
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+    padding:3px 8px;border-radius:6px;display:inline-block;margin-bottom:10px;
+  }
+  .qtype-badge.mcq{background:var(--marker-blue-dim);color:var(--marker-blue);}
+  .qtype-badge.tf{background:var(--marker-yellow-dim);color:#8a6412;}
+  .qtype-badge.match{background:var(--marker-red-dim);color:var(--marker-red);}
+  .qtype-badge.shortanswer{background:var(--marker-purple-dim);color:var(--marker-purple);}
+  .qtype-badge.fillblank{background:var(--marker-green-dim);color:var(--marker-green);}
+  .qtype-badge.essay{background:var(--marker-teal-dim);color:var(--marker-teal);}
+  .qcard .remove-q{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:13px;}
+  .qcard .remove-q:hover{color:var(--marker-red);}
+  .opt-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .opt-row input[type=text]{flex:1;}
+  .add-q-bar{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0;}
+
+  .progress-track{display:flex;gap:5px;margin-bottom:24px;}
+  .progress-track .seg{height:5px;flex:1;background:var(--line);border-radius:3px;}
+  .progress-track .seg.done{background:var(--chalk-dark);}
+  .q-text{font-size:18px;font-weight:600;margin-bottom:16px;color:var(--chalk-darker);}
+  .choice-row{
+    display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;margin-bottom:10px;background:#fff;
+  }
+  .choice-row.selected{border-color:var(--marker-blue);background:var(--marker-blue-dim);}
+  .choice-row:hover{cursor:pointer;border-color:var(--marker-blue);}
+
+  .match-wrap{position:relative;display:flex;justify-content:space-between;gap:60px;padding:10px 0;}
+  .match-col{flex:1;display:flex;flex-direction:column;gap:10px;}
+  .match-item{
+    border:1.5px solid var(--line);border-radius:9px;padding:11px 14px;background:#fff;font-size:14px;
+    cursor:pointer;position:relative;
+  }
+  .match-item.left{text-align:left;}
+  .match-item.right{text-align:right;}
+  .match-item.pending{border-color:var(--marker-yellow);background:var(--marker-yellow-dim);}
+  .match-item.paired{border-color:var(--marker-blue);}
+  .match-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+
+  .score-hero{text-align:center;padding:34px 20px;background:#fff;border:1px solid var(--line);border-radius:16px;margin-bottom:24px;}
+  .score-hero .num{font-family:'Space Grotesk';font-size:52px;font-weight:700;color:var(--chalk-dark);}
+  .score-hero .num span{font-size:22px;color:var(--muted);font-weight:500;}
+  .review-row{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;}
+  .review-row.correct{border-left:4px solid #4f8f5f;}
+  .review-row.incorrect{border-left:4px solid var(--marker-red);}
+  .review-row.pending{border-left:4px solid var(--marker-yellow);}
+  .review-row .tag{font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);}
+  .answer-given{background:var(--paper-dim);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13.5px;}
+  .answer-given .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;margin-bottom:3px;}
+  .pending-tag{background:var(--marker-yellow-dim);color:#8a6412;font-size:11px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:6px;display:inline-block;}
+  .attempts-meta{font-size:12.5px;color:var(--muted);margin-top:4px;}
+  .timer-chip{font-family:'JetBrains Mono';font-weight:700;background:var(--marker-blue-dim);color:var(--marker-blue);padding:6px 14px;border-radius:8px;font-size:14px;}
+  .timer-chip.warn{background:var(--marker-red);color:#fff;}
+  textarea.essay-input{width:100%;min-height:120px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;font-family:inherit;font-size:14px;resize:vertical;}
+  input.blank-input{border:none;border-bottom:2px solid var(--marker-blue);background:transparent;font-weight:600;font-family:inherit;font-size:15px;padding:2px 6px;min-width:130px;text-align:center;}
+  input.blank-input:focus{outline:none;background:var(--marker-blue-dim);}
+
+  table.results-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  table.results-table th,table.results-table td{padding:11px 14px;text-align:left;font-size:13.5px;border-bottom:1px solid var(--line);}
+  table.results-table th{background:var(--paper-dim);color:var(--muted);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.04em;}
+  table.results-table tr:last-child td{border-bottom:none;}
+
+  .toast{
+    position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+    background:var(--chalk-darker);color:#fff;padding:11px 20px;border-radius:9px;font-size:13.5px;
+    box-shadow:0 8px 22px rgba(0,0,0,.2);z-index:50;
+  }
+  @media(max-width:640px){
+    .match-wrap{gap:24px;}
+    .landing-hero h1{font-size:32px;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* =========================================================
+   DATA LAYER
+   Hierarchy: classroom (e.g. 7A) -> subjects (e.g. English,
+   Math) -> materials (links/slides/docs) + tests.
+   Everything shared so teacher + student views see one world.
+   NOTE: passwords are stored in plain text — fine for a
+   prototype, not for a real deployment with real students.
+   ========================================================= */
+const DATA_KEY = 'chalkline-data-v2';
+let DATA = null;
+
+function blankData(){
+  return { teachers:{}, students:{}, classrooms:{}, subjects:{}, materials:{}, tests:{}, submissions:{} };
+}
+
+async function loadData(){
+  try{
+    const res = await window.storage.get(DATA_KEY, true);
+    DATA = res ? JSON.parse(res.value) : blankData();
+  }catch(e){
+    DATA = blankData();
+  }
+  const b = blankData();
+  Object.keys(b).forEach(k=>{ if(!DATA[k]) DATA[k]=b[k]; });
+}
+
+async function saveData(){
+  try{
+    await window.storage.set(DATA_KEY, JSON.stringify(DATA), true);
+  }catch(e){
+    toast('Could not save — try again');
+  }
+}
+
+function uid(prefix){
+  return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+}
+
+function joinCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c = '';
+  for(let i=0;i<6;i++) c += chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+
+const MATERIAL_TYPES = [
+  {id:'slides', label:'Slides / PPT', icon:'📊'},
+  {id:'doc', label:'Document', icon:'📄'},
+  {id:'video', label:'Video', icon:'🎬'},
+  {id:'link', label:'Link', icon:'🔗'}
+];
+
+/* =========================================================
+   APP STATE
+   ========================================================= */
+let state = {
+  view:'landing',
+  role:null,
+  currentUser:null,
+  authMode:'login',
+  authError:'',
+
+  activeClassroomId:null,
+  activeClassroomTab:'students',
+
+  activeSubjectId:null,
+  activeSubjectTab:'materials',
+  newMaterialType:'slides',
+
+  builderSubjectId:null,
+  builderTitle:'',
+  builderQuestions:[],
+  builderTimeLimitMin:'',
+  builderDueDate:'',
+  builderMaxAttempts:'',
+  builderShuffleQuestions:false,
+  builderShuffleAnswers:false,
+
+  activeTestId:null,
+  takingTestId:null,
+  takingAnswers:{},
+  takingPending:{},
+  takingIndex:0,
+  takingOrder:null,
+  takingOptionOrders:{},
+  takingDeadline:null,
+
+  resultSubmissionId:null,
+  resultsTestId:null,
+
+  studentActiveClassroomId:null,
+  studentActiveSubjectId:null
+};
+
+function setState(patch){
+  state = Object.assign({}, state, patch);
+  render();
+}
+
+let testTimerInterval = null;
+function startTestTimer(){
+  clearTestTimer();
+  testTimerInterval = setInterval(()=>{
+    if(!state.takingDeadline || state.view!=='take-test'){ clearTestTimer(); return; }
+    const remaining = state.takingDeadline - Date.now();
+    const chip = document.getElementById('test-timer-chip');
+    if(remaining <= 0){
+      clearTestTimer();
+      submitTest();
+      return;
+    }
+    if(chip){
+      chip.textContent = formatTime(remaining);
+      chip.classList.toggle('warn', remaining < 60000);
+    }
+  }, 1000);
+}
+function clearTestTimer(){
+  if(testTimerInterval){ clearInterval(testTimerInterval); testTimerInterval=null; }
+}
+function formatTime(ms){
+  const totalSec = Math.max(0, Math.floor(ms/1000));
+  const mm = Math.floor(totalSec/60), ss = totalSec%60;
+  return (mm<10?'0':'')+mm+':'+(ss<10?'0':'')+ss;
+}
+function exitTest(){
+  clearTestTimer();
+  setState({view:'student-subject', takingDeadline:null});
+}
+
+let toastTimer=null;
+function toast(msg){
+  clearTimeout(toastTimer);
+  let el = document.getElementById('toast');
+  if(!el){
+    el = document.createElement('div');
+    el.id='toast';
+    el.className='toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.display='block';
+  toastTimer = setTimeout(()=>{ el.style.display='none'; }, 2400);
+}
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function teacherClassrooms(username){
+  return Object.entries(DATA.classrooms).filter(([id,c])=>c.teacherUsername===username).map(([id,c])=>Object.assign({id},c));
+}
+function classroomSubjects(classroomId){
+  return Object.entries(DATA.subjects).filter(([id,s])=>s.classroomId===classroomId).map(([id,s])=>Object.assign({id},s));
+}
+function subjectMaterials(subjectId){
+  return Object.entries(DATA.materials).filter(([id,m])=>m.subjectId===subjectId).map(([id,m])=>Object.assign({id},m)).sort((a,b)=>a.addedAt-b.addedAt);
+}
+function subjectTests(subjectId){
+  return Object.entries(DATA.tests).filter(([id,t])=>t.subjectId===subjectId).map(([id,t])=>Object.assign({id},t));
+}
+function studentClassrooms(username){
+  const s = DATA.students[username];
+  if(!s) return [];
+  return (s.classroomIds||[]).map(id=>Object.assign({id}, DATA.classrooms[id])).filter(c=>c.name);
+}
+function studentTestSubmissions(testId, username){
+  return Object.entries(DATA.submissions)
+    .filter(([id,s])=>s.testId===testId && s.studentUsername===username)
+    .map(([id,s])=>Object.assign({id},s))
+    .sort((a,b)=>b.submittedAt-a.submittedAt);
+}
+function testSubmissions(testId){
+  return Object.entries(DATA.submissions).filter(([id,s])=>s.testId===testId).map(([id,s])=>Object.assign({id},s));
+}
+function materialTypeInfo(typeId){
+  return MATERIAL_TYPES.find(t=>t.id===typeId) || MATERIAL_TYPES[3];
+}
+
+/* =========================================================
+   AUTH ACTIONS
+   ========================================================= */
+async function doRegister(role){
+  const name = document.getElementById('reg-name').value.trim();
+  const username = document.getElementById('reg-username').value.trim().toLowerCase();
+  const password = document.getElementById('reg-password').value;
+  if(!name || !username || !password){
+    setState({authError:'Fill in every field to continue.'}); return;
+  }
+  const bucket = role==='teacher' ? DATA.teachers : DATA.students;
+  if(bucket[username]){
+    setState({authError:'That username is already taken.'}); return;
+  }
+  bucket[username] = { name, password, classroomIds: role==='student' ? [] : undefined };
+  await saveData();
+  setState({role, currentUser:username, view: role+'-dashboard', authError:'', activeClassroomId:null});
+  toast('Welcome, '+name+'!');
+}
+
+async function doLogin(role){
+  const username = document.getElementById('login-username').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
+  const bucket = role==='teacher' ? DATA.teachers : DATA.students;
+  const user = bucket[username];
+  if(!user || user.password !== password){
+    setState({authError:'Username or password is incorrect.'}); return;
+  }
+  setState({role, currentUser:username, view: role+'-dashboard', authError:'', activeClassroomId:null});
+}
+
+function logout(){
+  setState({view:'landing', role:null, currentUser:null, authError:'',
+    activeClassroomId:null, activeSubjectId:null, studentActiveClassroomId:null, studentActiveSubjectId:null});
+}
+
+/* =========================================================
+   TEACHER — CLASSROOM ACTIONS
+   ========================================================= */
+async function createClassroom(){
+  const input = document.getElementById('new-classroom-name');
+  const name = input.value.trim();
+  if(!name) return;
+  const id = uid('cls');
+  DATA.classrooms[id] = { name, teacherUsername: state.currentUser, code: joinCode(), studentUsernames: [] };
+  await saveData();
+  input.value='';
+  render();
+  toast('Classroom created');
+}
+
+async function removeStudentFromClassroom(classroomId, username){
+  const c = DATA.classrooms[classroomId];
+  c.studentUsernames = c.studentUsernames.filter(u=>u!==username);
+  const s = DATA.students[username];
+  if(s) s.classroomIds = (s.classroomIds||[]).filter(id=>id!==classroomId);
+  await saveData();
+  render();
+}
+
+function openClassroom(id){
+  setState({view:'classroom-detail', activeClassroomId:id, activeClassroomTab:'subjects'});
+}
+
+async function createSubject(){
+  const input = document.getElementById('new-subject-name');
+  const name = input.value.trim();
+  if(!name) return;
+  const id = uid('subj');
+  DATA.subjects[id] = { classroomId: state.activeClassroomId, name };
+  await saveData();
+  input.value='';
+  render();
+  toast('Subject added');
+}
+
+function openSubject(id){
+  setState({view:'subject-detail', activeSubjectId:id, activeSubjectTab:'materials'});
+}
+
+async function deleteSubject(id){
+  delete DATA.subjects[id];
+  Object.keys(DATA.materials).forEach(mid=>{ if(DATA.materials[mid].subjectId===id) delete DATA.materials[mid]; });
+  Object.keys(DATA.tests).forEach(tid=>{ if(DATA.tests[tid].subjectId===id) delete DATA.tests[tid]; });
+  await saveData();
+  setState({view:'classroom-detail', activeClassroomTab:'subjects'});
+}
+
+async function addMaterial(){
+  const titleEl = document.getElementById('material-title');
+  const urlEl = document.getElementById('material-url');
+  const title = titleEl.value.trim();
+  const url = urlEl.value.trim();
+  if(!title || !url){ toast('Add both a title and a link'); return; }
+  const id = uid('mat');
+  DATA.materials[id] = { subjectId: state.activeSubjectId, title, url, type: state.newMaterialType, addedAt: Date.now() };
+  await saveData();
+  titleEl.value=''; urlEl.value='';
+  render();
+  toast('Added to subject');
+}
+async function deleteMaterial(id){
+  delete DATA.materials[id];
+  await saveData();
+  render();
+}
+
+function startTestBuilder(subjectId){
+  setState({view:'test-builder', builderSubjectId:subjectId, builderTitle:'', builderQuestions:[],
+    builderTimeLimitMin:'', builderDueDate:'', builderMaxAttempts:'', builderShuffleQuestions:false, builderShuffleAnswers:false});
+}
+
+function addBuilderQuestion(type){
+  let q;
+  if(type==='mcq') q = {type:'mcq', text:'', options:['',''], correct:0};
+  else if(type==='tf') q = {type:'tf', text:'', correct:true};
+  else if(type==='match') q = {type:'match', text:'Match each term to its definition', terms:['',''], defs:['','']};
+  else if(type==='shortanswer') q = {type:'shortanswer', text:'', answers:['']};
+  else if(type==='fillblank') q = {type:'fillblank', text:'The capital of France is ___.', answers:['']};
+  else q = {type:'essay', text:''};
+  setState({builderQuestions:[...state.builderQuestions, q]});
+}
+function removeBuilderQuestion(idx){
+  const qs = state.builderQuestions.slice();
+  qs.splice(idx,1);
+  setState({builderQuestions:qs});
+}
+function updateBuilderQuestion(idx, patch){
+  const qs = state.builderQuestions.slice();
+  qs[idx] = Object.assign({}, qs[idx], patch);
+  state.builderQuestions = qs;
+}
+
+async function saveTest(){
+  const title = document.getElementById('builder-title-input').value.trim();
+  if(!title){ toast('Give the test a title first'); return; }
+  if(state.builderQuestions.length===0){ toast('Add at least one question'); return; }
+  for(const q of state.builderQuestions){
+    if(!q.text || !q.text.trim()){ toast('Every question needs its text filled in'); return; }
+    if(q.type==='mcq' && q.options.some(o=>!o.trim())){ toast('Fill in every answer choice'); return; }
+    if(q.type==='match' && (q.terms.some(t=>!t.trim()) || q.defs.some(d=>!d.trim()))){ toast('Fill in every term and definition'); return; }
+    if((q.type==='shortanswer'||q.type==='fillblank') && (!q.answers || q.answers.length===0)){ toast('Add at least one accepted answer'); return; }
+  }
+  const timeLimitVal = parseInt(document.getElementById('builder-timelimit-input').value, 10);
+  const maxAttemptsVal = parseInt(document.getElementById('builder-maxattempts-input').value, 10);
+  const dueDateVal = document.getElementById('builder-duedate-input').value;
+  const id = uid('test');
+  DATA.tests[id] = {
+    subjectId: state.builderSubjectId, title, questions: state.builderQuestions,
+    timeLimitMin: Number.isFinite(timeLimitVal) && timeLimitVal>0 ? timeLimitVal : null,
+    maxAttempts: Number.isFinite(maxAttemptsVal) && maxAttemptsVal>0 ? maxAttemptsVal : null,
+    dueDate: dueDateVal || null,
+    shuffleQuestions: !!state.builderShuffleQuestions,
+    shuffleAnswers: !!state.builderShuffleAnswers
+  };
+  await saveData();
+  setState({view:'subject-detail', activeSubjectId: state.builderSubjectId, activeSubjectTab:'tests'});
+  toast('Test saved');
+}
+
+async function deleteTest(id){
+  delete DATA.tests[id];
+  Object.keys(DATA.submissions).forEach(sid=>{ if(DATA.submissions[sid].testId===id) delete DATA.submissions[sid]; });
+  await saveData();
+  render();
+}
+
+function viewTestResults(testId){
+  setState({view:'teacher-results', resultsTestId:testId});
+}
+
+/* =========================================================
+   STUDENT ACTIONS
+   ========================================================= */
+async function joinClassroom(){
+  const input = document.getElementById('join-code-input');
+  const code = input.value.trim().toUpperCase();
+  if(!code) return;
+  const entry = Object.entries(DATA.classrooms).find(([id,c])=>c.code===code);
+  if(!entry){ toast('No classroom with that code'); return; }
+  const [id, c] = entry;
+  const s = DATA.students[state.currentUser];
+  s.classroomIds = s.classroomIds || [];
+  if(s.classroomIds.includes(id)){ toast('You already joined this class'); return; }
+  s.classroomIds.push(id);
+  c.studentUsernames = c.studentUsernames || [];
+  if(!c.studentUsernames.includes(state.currentUser)) c.studentUsernames.push(state.currentUser);
+  await saveData();
+  input.value='';
+  render();
+  toast('Joined '+c.name);
+}
+
+function openStudentClassroom(id){
+  setState({view:'student-classroom', studentActiveClassroomId:id});
+}
+function openStudentSubject(id){
+  setState({view:'student-subject', studentActiveSubjectId:id});
+}
+
+function beginTest(testId){
+  const t = DATA.tests[testId];
+  if(!t) return;
+  const attempts = studentTestSubmissions(testId, state.currentUser);
+  const pastDue = t.dueDate && new Date(t.dueDate+'T23:59:59') < new Date();
+  if(pastDue){ toast('This test is past its due date'); return; }
+  if(t.maxAttempts && attempts.length >= t.maxAttempts){ toast('No attempts remaining'); return; }
+
+  let order = t.questions.map((_,i)=>i);
+  if(t.shuffleQuestions){
+    for(let k=order.length-1;k>0;k--){ const j=Math.floor(Math.random()*(k+1)); [order[k],order[j]]=[order[j],order[k]]; }
+  }
+  const optionOrders = {};
+  if(t.shuffleAnswers){
+    t.questions.forEach((q,qi)=>{
+      if(q.type==='mcq'){
+        const o = q.options.map((_,oi)=>oi);
+        for(let k=o.length-1;k>0;k--){ const j=Math.floor(Math.random()*(k+1)); [o[k],o[j]]=[o[j],o[k]]; }
+        optionOrders[qi]=o;
+      }
+    });
+  }
+  clearTestTimer();
+  const deadline = t.timeLimitMin ? Date.now() + t.timeLimitMin*60000 : null;
+  setState({view:'take-test', takingTestId:testId, takingAnswers:{}, takingPending:{}, takingIndex:0,
+    takingOrder:order, takingOptionOrders:optionOrders, takingDeadline:deadline, _shuffleCache:{}});
+  if(deadline) startTestTimer();
+}
+
+function selectMcq(qIndex, optIndex){
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:optIndex});
+  setState({takingAnswers:a});
+}
+function selectTf(qIndex, val){
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:val});
+  setState({takingAnswers:a});
+}
+function matchClickLeft(qIndex, leftIdx){
+  const pend = Object.assign({}, state.takingPending, {[qIndex]:leftIdx});
+  setState({takingPending:pend});
+}
+function matchClickRight(qIndex, rightIdx){
+  const pendLeft = state.takingPending[qIndex];
+  if(pendLeft===undefined) return;
+  const pairs = (state.takingAnswers[qIndex] || []).filter(p=>p.left!==pendLeft && p.right!==rightIdx);
+  pairs.push({left:pendLeft, right:rightIdx});
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:pairs});
+  const pend = Object.assign({}, state.takingPending);
+  delete pend[qIndex];
+  setState({takingAnswers:a, takingPending:pend});
+}
+
+function goToQuestion(i){ setState({takingIndex:i}); }
+
+async function submitTest(){
+  clearTestTimer();
+  const test = DATA.tests[state.takingTestId];
+  let score = 0;
+  let pendingEssays = 0;
+  const total = test.questions.length;
+  const detail = [];
+  test.questions.forEach((q, i)=>{
+    const ans = state.takingAnswers[i];
+    let correct = false;
+    if(q.type==='mcq') correct = ans===q.correct;
+    else if(q.type==='tf') correct = ans===q.correct;
+    else if(q.type==='match'){
+      const pairs = ans || [];
+      correct = pairs.length===q.terms.length && pairs.every(p=>p.left===p.right);
+    }
+    else if(q.type==='shortanswer' || q.type==='fillblank'){
+      const given = (ans||'').trim().toLowerCase();
+      correct = given.length>0 && (q.answers||[]).some(a=>a.trim().toLowerCase()===given);
+    }
+    else if(q.type==='essay'){
+      correct = null;
+      pendingEssays++;
+    }
+    if(correct===true) score++;
+    detail.push({question:q, answer:ans, correct});
+  });
+  const subId = uid('sub');
+  DATA.submissions[subId] = {
+    testId: state.takingTestId,
+    studentUsername: state.currentUser,
+    score, total, detail, pendingEssays,
+    submittedAt: Date.now()
+  };
+  await saveData();
+  setState({view:'test-result', resultSubmissionId:subId, takingDeadline:null});
+}
+
+/* =========================================================
+   RENDER
+   ========================================================= */
+function render(){
+  const app = document.getElementById('app');
+  let body = '';
+  if(state.view==='landing') body = renderLanding();
+  else if(state.view==='teacher-auth') body = renderAuth('teacher');
+  else if(state.view==='student-auth') body = renderAuth('student');
+  else if(state.view==='teacher-dashboard') body = renderTeacherDashboard();
+  else if(state.view==='classroom-detail') body = renderClassroomDetail();
+  else if(state.view==='subject-detail') body = renderSubjectDetail();
+  else if(state.view==='test-builder') body = renderTestBuilder();
+  else if(state.view==='teacher-results') body = renderTeacherResults();
+  else if(state.view==='student-dashboard') body = renderStudentDashboard();
+  else if(state.view==='student-classroom') body = renderStudentClassroom();
+  else if(state.view==='student-subject') body = renderStudentSubject();
+  else if(state.view==='take-test') body = renderTakeTest();
+  else if(state.view==='test-result') body = renderTestResult();
+  else body = renderLanding();
+
+  app.innerHTML = topbarHtml() + '<main>' + body + '</main>';
+
+  if(state.view==='take-test') drawMatchLines();
+}
+
+function topbarHtml(){
+  if(!state.role) {
+    return `<div class="topbar">
+      <div class="brand"><span class="dot-line"><span></span><span></span><span></span></span>Chalkline</div>
+      <div class="who"></div>
+    </div>`;
+  }
+  const user = state.role==='teacher' ? DATA.teachers[state.currentUser] : DATA.students[state.currentUser];
+  const name = user ? user.name : state.currentUser;
+  return `<div class="topbar">
+    <div class="brand"><span class="dot-line"><span></span><span></span><span></span></span>Chalkline</div>
+    <div class="who">
+      <span>${esc(name)} · ${state.role==='teacher'?'Teacher':'Student'}</span>
+      <button class="link" onclick="logout()">Log out</button>
+    </div>
+  </div>`;
+}
+
+function renderLanding(){
+  return `
+  <div class="landing-hero">
+    <h1>Run your classroom<br>without the paperwork.</h1>
+    <p>Set up classes, drop in subjects, share materials, and write tests with multiple choice, true/false, and matching questions — all graded for you.</p>
+  </div>
+  <div class="portal-choice">
+    <div class="portal-card">
+      <div class="icon">🧑‍🏫</div>
+      <h3>I'm a teacher</h3>
+      <p>Create classes, add subjects, share materials, and build tests.</p>
+      <button class="btn btn-primary btn-full" onclick="setState({view:'teacher-auth', authMode:'login', authError:''})">Continue as teacher</button>
+    </div>
+    <div class="portal-card">
+      <div class="icon">🎒</div>
+      <h3>I'm a student</h3>
+      <p>Join your class with a code and get to your subjects.</p>
+      <button class="btn btn-blue btn-full" onclick="setState({view:'student-auth', authMode:'login', authError:''})">Continue as student</button>
+    </div>
+  </div>`;
+}
+
+function renderAuth(role){
+  const label = role==='teacher' ? 'Teacher' : 'Student';
+  const isLogin = state.authMode==='login';
+  return `
+  <div class="auth-wrap">
+    <button class="back-link" onclick="setState({view:'landing', authError:''})">← Back</button>
+    <div class="card">
+      <h2>${isLogin?'Log in':'Create account'} · ${label}</h2>
+      ${state.authError ? `<div class="error-msg">${esc(state.authError)}</div>` : ''}
+      ${isLogin ? `
+        <div class="field"><label>Username</label><input id="login-username" type="text" autocomplete="username"></div>
+        <div class="field"><label>Password</label><input id="login-password" type="password" autocomplete="current-password"></div>
+        <button class="btn ${role==='teacher'?'btn-primary':'btn-blue'} btn-full" onclick="doLogin('${role}')">Log in</button>
+      ` : `
+        <div class="field"><label>Full name</label><input id="reg-name" type="text"></div>
+        <div class="field"><label>Choose a username</label><input id="reg-username" type="text"></div>
+        <div class="field"><label>Choose a password</label><input id="reg-password" type="password"></div>
+        <button class="btn ${role==='teacher'?'btn-primary':'btn-blue'} btn-full" onclick="doRegister('${role}')">Create account</button>
+      `}
+      <div class="auth-switch">
+        ${isLogin ? `New here? <button onclick="setState({authMode:'register', authError:''})">Create an account</button>`
+                   : `Already have an account? <button onclick="setState({authMode:'login', authError:''})">Log in</button>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderTeacherDashboard(){
+  const classrooms = teacherClassrooms(state.currentUser);
+  return `
+  <div class="page-head">
+    <h1>Your classes</h1>
+  </div>
+  <div class="card" style="margin-bottom:24px;max-width:420px;">
+    <div class="field" style="margin-bottom:10px;"><label>New class name</label>
+      <input id="new-classroom-name" type="text" placeholder="e.g. 7A">
+    </div>
+    <button class="btn btn-primary" onclick="createClassroom()">Create class</button>
+  </div>
+  ${classrooms.length===0 ? `
+    <div class="empty-state">
+      <h3 class="display" style="margin:0 0 6px;">No classes yet</h3>
+      <p style="margin:0;">Create your first class above — e.g. 7A, 7B, 8A — to get a join code for your students.</p>
+    </div>
+  ` : `
+  <div class="grid">
+    ${classrooms.map(c=>{
+      const subjCount = classroomSubjects(c.id).length;
+      return `
+      <div class="tile clickable" onclick="openClassroom('${c.id}')">
+        <h3>${esc(c.name)}</h3>
+        <div class="meta">${(c.studentUsernames||[]).length} student${(c.studentUsernames||[]).length===1?'':'s'} · ${subjCount} subject${subjCount===1?'':'s'}</div>
+        <span class="code-pill">${esc(c.code)}</span>
+      </div>
+    `;}).join('')}
+  </div>`}`;
+}
+
+function renderClassroomDetail(){
+  const c = Object.assign({id:state.activeClassroomId}, DATA.classrooms[state.activeClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const tab = state.activeClassroomTab;
+  const students = (c.studentUsernames||[]).map(u=>Object.assign({username:u}, DATA.students[u]));
+  const subjects = classroomSubjects(c.id);
+  return `
+  <div class="crumbs">
+    <button onclick="setState({view:'teacher-dashboard'})">Your classes</button>
+    <span class="sep">/</span>
+    <span class="current">${esc(c.name)}</span>
+  </div>
+  <div class="page-head">
+    <div>
+      <h1>${esc(c.name)}</h1>
+      <div class="meta" style="margin-top:4px;">Join code: <span class="code-pill">${esc(c.code)}</span></div>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="${tab==='subjects'?'active':''}" onclick="setState({activeClassroomTab:'subjects'})">Subjects (${subjects.length})</button>
+    <button class="${tab==='students'?'active':''}" onclick="setState({activeClassroomTab:'students'})">Students (${students.length})</button>
+  </div>
+  ${tab==='subjects' ? `
+    <div class="card" style="margin-bottom:20px;max-width:420px;">
+      <div class="field" style="margin-bottom:10px;"><label>New subject</label>
+        <input id="new-subject-name" type="text" placeholder="e.g. English, Math, Science">
+      </div>
+      <button class="btn btn-primary" onclick="createSubject()">Add subject</button>
+    </div>
+    ${subjects.length===0 ? `<div class="empty-state">No subjects yet — add English, Math, or any subject this class takes.</div>` : `
+    <div class="grid">
+      ${subjects.map(s=>{
+        const matCount = subjectMaterials(s.id).length;
+        const testCount = subjectTests(s.id).length;
+        return `
+        <div class="tile clickable" onclick="openSubject('${s.id}')">
+          <div class="subject-icon">📚</div>
+          <h3>${esc(s.name)}</h3>
+          <div class="meta">${matCount} material${matCount===1?'':'s'} · ${testCount} test${testCount===1?'':'s'}</div>
+        </div>`;
+      }).join('')}
+    </div>`}
+  ` : `
+    ${students.length===0 ? `<div class="empty-state">Share the join code <strong>${esc(c.code)}</strong> with your students so they can join.</div>` : `
+    <div class="card">
+      ${students.map((s,i)=>`
+        ${i>0?'<div class="dot-rule"></div>':''}
+        <div class="list-row">
+          <span>${esc(s.name||s.username)}</span>
+          <button class="btn btn-danger btn-sm" onclick="removeStudentFromClassroom('${c.id}','${s.username}')">Remove</button>
+        </div>
+      `).join('')}
+    </div>`}
+  `}`;
+}
+
+function renderSubjectDetail(){
+  const s = Object.assign({id:state.activeSubjectId}, DATA.subjects[state.activeSubjectId]);
+  if(!s.name) return `<p>Subject not found.</p>`;
+  const c = DATA.classrooms[s.classroomId];
+  const tab = state.activeSubjectTab;
+  const materials = subjectMaterials(s.id);
+  const tests = subjectTests(s.id);
+  return `
+  <div class="crumbs">
+    <button onclick="setState({view:'teacher-dashboard'})">Your classes</button>
+    <span class="sep">/</span>
+    <button onclick="setState({view:'classroom-detail', activeClassroomId:s.classroomId, activeClassroomTab:'subjects'})">${esc(c?c.name:'')}</button>
+    <span class="sep">/</span>
+    <span class="current">${esc(s.name)}</span>
+  </div>
+  <div class="page-head">
+    <h1>${esc(s.name)}</h1>
+    <button class="btn btn-danger btn-sm" onclick="if(confirm('Delete this subject and everything in it?')) deleteSubject('${s.id}')">Delete subject</button>
+  </div>
+  <div class="tabs">
+    <button class="${tab==='materials'?'active':''}" onclick="setState({activeSubjectTab:'materials'})">Materials (${materials.length})</button>
+    <button class="${tab==='tests'?'active':''}" onclick="setState({activeSubjectTab:'tests'})">Tests (${tests.length})</button>
+  </div>
+  ${tab==='materials' ? `
+    <div class="card" style="margin-bottom:20px;max-width:480px;">
+      <div class="field" style="margin-bottom:8px;"><label>Type</label>
+        <div class="material-type-select">
+          ${MATERIAL_TYPES.map(t=>`<button type="button" class="type-chip ${state.newMaterialType===t.id?'active':''}" onclick="state.newMaterialType='${t.id}';render();">${t.icon} ${t.label}</button>`).join('')}
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:8px;"><label>Title</label>
+        <input id="material-title" type="text" placeholder="e.g. Unit 3 Slides">
+      </div>
+      <div class="field" style="margin-bottom:10px;"><label>Link (Teams, Drive, YouTube, anywhere)</label>
+        <input id="material-url" type="text" placeholder="https://...">
+      </div>
+      <button class="btn btn-primary" onclick="addMaterial()">Add to subject</button>
+    </div>
+    ${materials.length===0 ? `<div class="empty-state">No materials yet — add slides, documents, or links for students to study from.</div>` : `
+    <div class="card">
+      ${materials.map((m,i)=>{
+        const ti = materialTypeInfo(m.type);
+        return `
+        ${i>0?'<div class="dot-rule"></div>':''}
+        <div class="material-row">
+          <div class="material-icon ${m.type}">${ti.icon}</div>
+          <div class="material-info">
+            <div class="mtitle">${esc(m.title)}</div>
+            <div class="murl">${esc(m.url)}</div>
+          </div>
+          <a href="${esc(m.url)}" target="_blank" rel="noopener"><button class="btn btn-outline btn-sm">Open</button></a>
+          <button class="btn btn-danger btn-sm" onclick="deleteMaterial('${m.id}')">Remove</button>
+        </div>`;
+      }).join('')}
+    </div>`}
+  ` : `
+    <div style="margin-bottom:16px;">
+      <button class="btn btn-primary" onclick="startTestBuilder('${s.id}')">+ New test</button>
+    </div>
+    ${tests.length===0 ? `<div class="empty-state">No tests yet in ${esc(s.name)}.</div>` : `
+    <div class="grid">
+      ${tests.map(t=>{
+        const subs = testSubmissions(t.id);
+        const pendingTotal = subs.reduce((sum,s)=>sum+(s.pendingEssays||0),0);
+        const metaBits = [`${t.questions.length} question${t.questions.length===1?'':'s'}`, `${subs.length} submission${subs.length===1?'':'s'}`];
+        if(t.timeLimitMin) metaBits.push(`${t.timeLimitMin} min limit`);
+        if(t.maxAttempts) metaBits.push(`${t.maxAttempts} attempt${t.maxAttempts===1?'':'s'} max`);
+        if(t.dueDate) metaBits.push(`due ${esc(t.dueDate)}`);
+        return `
+        <div class="tile">
+          <h3>${esc(t.title)}</h3>
+          <div class="meta">${metaBits.join(' · ')}</div>
+          ${pendingTotal ? `<div class="pending-tag" style="margin-top:6px;">${pendingTotal} awaiting review</div>` : ''}
+          <div class="tile-actions">
+            <button class="btn btn-outline btn-sm" onclick="viewTestResults('${t.id}')">Results</button>
+            <button class="btn btn-danger btn-sm" onclick="if(confirm('Delete this test?')) deleteTest('${t.id}')">Delete</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`}
+  `}`;
+}
+
+function renderTestBuilder(){
+  const qs = state.builderQuestions;
+  const s = DATA.subjects[state.builderSubjectId];
+  return `
+  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:state.builderSubjectId, activeSubjectTab:'tests'})">← Cancel</button>
+  <div class="page-head"><h1>New test ${s?('· '+esc(s.name)):''}</h1></div>
+  <div class="card" style="margin-bottom:22px;max-width:560px;">
+    <div class="field"><label>Test title</label>
+      <input id="builder-title-input" type="text" placeholder="e.g. Chapter 4 Quiz" value="${esc(state.builderTitle)}" oninput="state.builderTitle=this.value">
+    </div>
+    <div class="dot-rule"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="field" style="margin-bottom:0;"><label>Time limit (minutes)</label>
+        <input id="builder-timelimit-input" type="number" min="1" placeholder="No limit" value="${esc(state.builderTimeLimitMin)}" oninput="state.builderTimeLimitMin=this.value">
+      </div>
+      <div class="field" style="margin-bottom:0;"><label>Due date</label>
+        <input id="builder-duedate-input" type="date" value="${esc(state.builderDueDate)}" oninput="state.builderDueDate=this.value">
+      </div>
+      <div class="field" style="margin-bottom:0;"><label>Max attempts</label>
+        <input id="builder-maxattempts-input" type="number" min="1" placeholder="Unlimited" value="${esc(state.builderMaxAttempts)}" oninput="state.builderMaxAttempts=this.value">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Shuffle</label>
+        <div style="display:flex;flex-direction:column;gap:6px;padding-top:5px;">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:500;font-size:13.5px;text-transform:none;letter-spacing:0;color:var(--ink);">
+            <input type="checkbox" ${state.builderShuffleQuestions?'checked':''} onchange="state.builderShuffleQuestions=this.checked">
+            Question order
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:500;font-size:13.5px;text-transform:none;letter-spacing:0;color:var(--ink);">
+            <input type="checkbox" ${state.builderShuffleAnswers?'checked':''} onchange="state.builderShuffleAnswers=this.checked">
+            Answer choices (MCQ)
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  ${qs.map((q,idx)=>renderBuilderQuestion(q, idx)).join('')}
+
+  <div class="add-q-bar">
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('mcq')">+ Multiple choice</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('tf')">+ True / False</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('match')">+ Matching (connect the line)</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('shortanswer')">+ Short answer</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('fillblank')">+ Fill in the blank</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('essay')">+ Essay</button>
+  </div>
+
+  <button class="btn btn-primary" onclick="saveTest()">Save test</button>
+  `;
+}
+
+function renderBuilderQuestion(q, idx){
+  if(q.type==='mcq'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge mcq">Multiple choice</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      ${q.options.map((opt,oi)=>`
+        <div class="opt-row">
+          <input type="radio" name="correct-${idx}" ${q.correct===oi?'checked':''} onchange="updateBuilderQuestion(${idx},{correct:${oi}})">
+          <input type="text" placeholder="Choice ${oi+1}" value="${esc(opt)}" oninput="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o[${oi}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{options:o});}).call(this)">
+          ${q.options.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.splice(${oi},1);let c=qs[${idx}].correct; if(c>=o.length)c=0; qs[${idx}]=Object.assign({},qs[${idx}],{options:o,correct:c}); render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.push('');qs[${idx}]=Object.assign({},qs[${idx}],{options:o});render();})()">+ Add choice</button>
+      <div class="meta" style="margin-top:8px;">Select the radio button next to the correct answer.</div>
+    </div>`;
+  }
+  if(q.type==='tf'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge tf">True / False</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="opt-row">
+        <label style="display:flex;align-items:center;gap:6px;"><input type="radio" name="tf-${idx}" ${q.correct===true?'checked':''} onchange="updateBuilderQuestion(${idx},{correct:true})"> True</label>
+        <label style="display:flex;align-items:center;gap:6px;margin-left:18px;"><input type="radio" name="tf-${idx}" ${q.correct===false?'checked':''} onchange="updateBuilderQuestion(${idx},{correct:false})"> False</label>
+      </div>
+    </div>`;
+  }
+  if(q.type==='match'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge match">Matching</span>
+      <div class="field"><label>Instructions</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="meta" style="margin-bottom:8px;">Each term lines up with the definition next to it — students will see the definitions shuffled.</div>
+      ${q.terms.map((term,ti)=>`
+        <div class="opt-row">
+          <input type="text" placeholder="Term ${ti+1}" value="${esc(term)}" style="flex:1" oninput="(function(){const qs=state.builderQuestions;const t=qs[${idx}].terms.slice();t[${ti}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{terms:t});}).call(this)">
+          <span style="color:var(--muted);">↔</span>
+          <input type="text" placeholder="Definition ${ti+1}" value="${esc(q.defs[ti])}" style="flex:1" oninput="(function(){const qs=state.builderQuestions;const d=qs[${idx}].defs.slice();d[${ti}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{defs:d});}).call(this)">
+          ${q.terms.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const t=qs[${idx}].terms.slice();const d=qs[${idx}].defs.slice();t.splice(${ti},1);d.splice(${ti},1);qs[${idx}]=Object.assign({},qs[${idx}],{terms:t,defs:d});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const t=qs[${idx}].terms.slice();const d=qs[${idx}].defs.slice();t.push('');d.push('');qs[${idx}]=Object.assign({},qs[${idx}],{terms:t,defs:d});render();})()">+ Add pair</button>
+    </div>`;
+  }
+  if(q.type==='shortanswer'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge shortanswer">Short answer</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="field"><label>Accepted answers (comma-separated)</label>
+        <input type="text" placeholder="e.g. Paris, paris, city of light" value="${esc((q.answers||['']).join(', '))}" oninput="updateBuilderQuestion(${idx},{answers:this.value.split(',').map(a=>a.trim()).filter(a=>a)})">
+      </div>
+      <div class="meta">Not case-sensitive. List every wording you'll accept.</div>
+    </div>`;
+  }
+  if(q.type==='fillblank'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge fillblank">Fill in the blank</span>
+      <div class="field"><label>Sentence (use ___ for the blank)</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="field"><label>Accepted answers (comma-separated)</label>
+        <input type="text" placeholder="e.g. Paris, paris" value="${esc((q.answers||['']).join(', '))}" oninput="updateBuilderQuestion(${idx},{answers:this.value.split(',').map(a=>a.trim()).filter(a=>a)})">
+      </div>
+      <div class="meta">Not case-sensitive. Students see the blank as a fill-in box right inside the sentence.</div>
+    </div>`;
+  }
+  return `<div class="qcard">
+    <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+    <span class="qtype-badge essay">Essay</span>
+    <div class="field"><label>Prompt ${idx+1}</label>
+      <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+    </div>
+    <div class="meta">Graded by hand — you'll mark each response correct or incorrect after students submit.</div>
+  </div>`;
+}
+
+function renderTeacherResults(){
+  const t = Object.assign({id:state.resultsTestId}, DATA.tests[state.resultsTestId]);
+  if(!t.title) return `<p>Test not found.</p>`;
+  const subs = testSubmissions(t.id).sort((a,b)=>b.submittedAt-a.submittedAt);
+  return `
+  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:t.subjectId, activeSubjectTab:'tests'})">← Back to subject</button>
+  <div class="page-head"><h1>${esc(t.title)} — results</h1></div>
+  ${subs.length===0 ? `<div class="empty-state">No one has submitted this test yet.</div>` : `
+  <table class="results-table">
+    <thead><tr><th>Student</th><th>Score</th><th>Percent</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      ${subs.map(s=>{
+        const student = DATA.students[s.studentUsername];
+        const pct = s.total ? Math.round((s.score/s.total)*100) : 0;
+        return `<tr>
+          <td>${esc(student?student.name:s.studentUsername)}</td>
+          <td>${s.score} / ${s.total}</td>
+          <td>${pct}%</td>
+          <td>${s.pendingEssays ? `<span class="pending-tag">${s.pendingEssays} pending</span>` : '—'}</td>
+          <td><button class="btn btn-outline btn-sm" onclick="setState({view:'test-result', resultSubmissionId:'${s.id}'})">Review</button></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`}
+  `;
+}
+
+function renderStudentDashboard(){
+  const classes = studentClassrooms(state.currentUser);
+  return `
+  <div class="page-head"><h1>Your classes</h1></div>
+  <div class="card" style="margin-bottom:24px;max-width:420px;">
+    <div class="field" style="margin-bottom:10px;"><label>Join a class</label>
+      <input id="join-code-input" type="text" placeholder="Enter class code" class="mono" style="text-transform:uppercase;">
+    </div>
+    <button class="btn btn-blue" onclick="joinClassroom()">Join class</button>
+  </div>
+
+  ${classes.length===0 ? `
+    <div class="empty-state">
+      <h3 class="display" style="margin:0 0 6px;">You haven't joined a class yet</h3>
+      <p style="margin:0;">Ask your teacher for the class code and enter it above.</p>
+    </div>
+  ` : `
+  <div class="grid">
+    ${classes.map(c=>{
+      const subjCount = classroomSubjects(c.id).length;
+      return `
+      <div class="tile clickable" onclick="openStudentClassroom('${c.id}')">
+        <h3>${esc(c.name)}</h3>
+        <div class="meta">${subjCount} subject${subjCount===1?'':'s'}</div>
+      </div>`;
+    }).join('')}
+  </div>`}`;
+}
+
+function renderStudentClassroom(){
+  const c = Object.assign({id:state.studentActiveClassroomId}, DATA.classrooms[state.studentActiveClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const subjects = classroomSubjects(c.id);
+  return `
+  <div class="crumbs">
+    <button onclick="setState({view:'student-dashboard'})">Your classes</button>
+    <span class="sep">/</span>
+    <span class="current">${esc(c.name)}</span>
+  </div>
+  <div class="page-head"><h1>${esc(c.name)}</h1></div>
+  ${subjects.length===0 ? `<div class="empty-state">No subjects added here yet — check back soon.</div>` : `
+  <div class="grid">
+    ${subjects.map(s=>{
+      const matCount = subjectMaterials(s.id).length;
+      const testCount = subjectTests(s.id).length;
+      return `
+      <div class="tile clickable" onclick="openStudentSubject('${s.id}')">
+        <div class="subject-icon">📚</div>
+        <h3>${esc(s.name)}</h3>
+        <div class="meta">${matCount} material${matCount===1?'':'s'} · ${testCount} test${testCount===1?'':'s'}</div>
+      </div>`;
+    }).join('')}
+  </div>`}`;
+}
+
+function renderStudentSubject(){
+  const s = Object.assign({id:state.studentActiveSubjectId}, DATA.subjects[state.studentActiveSubjectId]);
+  if(!s.name) return `<p>Subject not found.</p>`;
+  const c = DATA.classrooms[s.classroomId];
+  const materials = subjectMaterials(s.id);
+  const tests = subjectTests(s.id);
+  return `
+  <div class="crumbs">
+    <button onclick="setState({view:'student-dashboard'})">Your classes</button>
+    <span class="sep">/</span>
+    <button onclick="setState({view:'student-classroom', studentActiveClassroomId:s.classroomId})">${esc(c?c.name:'')}</button>
+    <span class="sep">/</span>
+    <span class="current">${esc(s.name)}</span>
+  </div>
+  <div class="page-head"><h1>${esc(s.name)}</h1></div>
+
+  <h3 style="margin:0 0 10px;font-size:16px;">Study materials</h3>
+  ${materials.length===0 ? `<div class="empty-state" style="padding:24px;">Nothing posted here yet.</div>` : `
+  <div class="card" style="margin-bottom:26px;">
+    ${materials.map((m,i)=>{
+      const ti = materialTypeInfo(m.type);
+      return `
+      ${i>0?'<div class="dot-rule"></div>':''}
+      <div class="material-row">
+        <div class="material-icon ${m.type}">${ti.icon}</div>
+        <div class="material-info">
+          <div class="mtitle">${esc(m.title)}</div>
+          <div class="murl">${esc(m.url)}</div>
+        </div>
+        <a href="${esc(m.url)}" target="_blank" rel="noopener"><button class="btn btn-outline btn-sm">Open</button></a>
+      </div>`;
+    }).join('')}
+  </div>`}
+
+  <h3 style="margin:0 0 10px;font-size:16px;">Tests</h3>
+  ${tests.length===0 ? `<div class="empty-state" style="padding:24px;">No tests assigned yet.</div>` : `
+  <div class="grid">
+    ${tests.map(t=>{
+      const attempts = studentTestSubmissions(t.id, state.currentUser);
+      const latest = attempts[0];
+      const attemptsLeft = t.maxAttempts ? Math.max(0, t.maxAttempts - attempts.length) : null;
+      const pastDue = t.dueDate && new Date(t.dueDate+'T23:59:59') < new Date();
+      const canAttempt = !pastDue && (attemptsLeft===null || attemptsLeft>0);
+      const metaBits = [`${t.questions.length} question${t.questions.length===1?'':'s'}`];
+      if(t.timeLimitMin) metaBits.push(`${t.timeLimitMin} min limit`);
+      return `
+      <div class="tile">
+        <h3>${esc(t.title)}</h3>
+        <div class="meta">${metaBits.join(' · ')}</div>
+        ${pastDue ? `<div class="pending-tag" style="margin:6px 0;">Past due</div>` : ''}
+        ${latest ? `
+          <div class="code-pill" style="background:var(--marker-blue-dim);color:var(--marker-blue);">Score: ${latest.score}/${latest.total}${latest.pendingEssays?' ('+latest.pendingEssays+' pending)':''}</div>
+          ${t.maxAttempts ? `<div class="attempts-meta">Attempt ${attempts.length} of ${t.maxAttempts}</div>` : ''}
+          <div class="tile-actions">
+            <button class="btn btn-outline btn-sm" onclick="setState({view:'test-result', resultSubmissionId:'${latest.id}'})">View result</button>
+            ${canAttempt ? `<button class="btn btn-blue btn-sm" onclick="beginTest('${t.id}')">Retake</button>` : ''}
+          </div>
+        ` : `
+          ${t.maxAttempts ? `<div class="attempts-meta">${attemptsLeft} attempt${attemptsLeft===1?'':'s'} allowed</div>` : ''}
+          <div class="tile-actions">${canAttempt ? `<button class="btn btn-blue btn-sm" onclick="beginTest('${t.id}')">Take test</button>` : `<div class="meta">Not available</div>`}</div>
+        `}
+      </div>`;
+    }).join('')}
+  </div>`}`;
+}
+
+function renderTakeTest(){
+  const t = DATA.tests[state.takingTestId];
+  if(!t) return `<p>Test not found.</p>`;
+  const order = (state.takingOrder && state.takingOrder.length===t.questions.length) ? state.takingOrder : t.questions.map((_,idx)=>idx);
+  const dispIdx = state.takingIndex;
+  const qi = order[dispIdx];
+  const q = t.questions[qi];
+  const total = order.length;
+  const answered = state.takingAnswers[qi]!==undefined && state.takingAnswers[qi]!=='';
+
+  let qBody = '';
+  if(q.type==='mcq'){
+    const optOrder = (state.takingOptionOrders && state.takingOptionOrders[qi]) || q.options.map((_,oi)=>oi);
+    qBody = optOrder.map(oi=>`
+      <div class="choice-row ${state.takingAnswers[qi]===oi?'selected':''}" onclick="selectMcq(${qi},${oi})">
+        <span>${esc(q.options[oi])}</span>
+      </div>
+    `).join('');
+  } else if(q.type==='tf'){
+    qBody = `
+      <div class="choice-row ${state.takingAnswers[qi]===true?'selected':''}" onclick="selectTf(${qi},true)">True</div>
+      <div class="choice-row ${state.takingAnswers[qi]===false?'selected':''}" onclick="selectTf(${qi},false)">False</div>
+    `;
+  } else if(q.type==='match'){
+    if(!state._shuffleCache) state._shuffleCache = {};
+    const cacheKey = state.takingTestId+'-'+qi;
+    if(!state._shuffleCache[cacheKey]){
+      const defOrder = q.defs.map((_,idx)=>idx);
+      for(let k=defOrder.length-1;k>0;k--){ const j=Math.floor(Math.random()*(k+1)); [defOrder[k],defOrder[j]]=[defOrder[j],defOrder[k]]; }
+      state._shuffleCache[cacheKey]=defOrder;
+    }
+    const defOrder = state._shuffleCache[cacheKey];
+    const pairs = state.takingAnswers[qi] || [];
+    const pendLeft = state.takingPending[qi];
+    qBody = `
+      <div class="match-wrap" id="match-wrap-${qi}">
+        <svg class="match-svg" id="match-svg-${qi}"></svg>
+        <div class="match-col">
+          ${q.terms.map((term,ti)=>{
+            const isPaired = pairs.some(p=>p.left===ti);
+            const isPending = pendLeft===ti;
+            return `<div class="match-item left ${isPaired?'paired':''} ${isPending?'pending':''}" data-side="left" data-idx="${ti}" onclick="matchClickLeft(${qi},${ti})">${esc(term)}</div>`;
+          }).join('')}
+        </div>
+        <div class="match-col">
+          ${defOrder.map(ri=>{
+            const isPaired = pairs.some(p=>p.right===ri);
+            return `<div class="match-item right ${isPaired?'paired':''}" data-side="right" data-idx="${ri}" onclick="matchClickRight(${qi},${ri})">${esc(q.defs[ri])}</div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="meta" style="margin-top:10px;">Click a term, then click its matching definition to connect them.</div>
+    `;
+  } else if(q.type==='shortanswer'){
+    qBody = `<input type="text" placeholder="Type your answer" value="${esc(state.takingAnswers[qi]||'')}"
+      oninput="state.takingAnswers[${qi}]=this.value; const b=document.getElementById('test-nav-next'); if(b) b.disabled = !(this.value && this.value.trim().length>0);">`;
+  } else if(q.type==='fillblank'){
+    const parts = q.text.split(/_{3,}/);
+    const before = esc(parts[0]||'');
+    const after = esc(parts.slice(1).join('___')||'');
+    qBody = `<div class="q-text" style="font-size:16px;">${before}<input type="text" class="blank-input" value="${esc(state.takingAnswers[qi]||'')}"
+      oninput="state.takingAnswers[${qi}]=this.value; const b=document.getElementById('test-nav-next'); if(b) b.disabled = !(this.value && this.value.trim().length>0);">${after}</div>`;
+  } else if(q.type==='essay'){
+    qBody = `<textarea class="essay-input" placeholder="Write your response"
+      oninput="state.takingAnswers[${qi}]=this.value; const b=document.getElementById('test-nav-next'); if(b) b.disabled = !(this.value && this.value.trim().length>0);">${esc(state.takingAnswers[qi]||'')}</textarea>`;
+  }
+
+  const canSubmitQ = q.type==='match' ? (state.takingAnswers[qi]||[]).length===q.terms.length : answered;
+
+  return `
+  <button class="back-link" onclick="exitTest()">← Exit test</button>
+  <div class="page-head">
+    <h1>${esc(t.title)}</h1>
+    ${t.timeLimitMin ? `<span class="timer-chip" id="test-timer-chip">${formatTime(state.takingDeadline - Date.now())}</span>` : ''}
+  </div>
+  <div class="progress-track">
+    ${order.map(oqi=>`<div class="seg ${state.takingAnswers[oqi]!==undefined && state.takingAnswers[oqi]!==''?'done':''}"></div>`).join('')}
+  </div>
+  <div class="meta" style="margin-bottom:6px;">Question ${dispIdx+1} of ${total}</div>
+  ${q.type==='fillblank' ? '' : `<div class="q-text">${esc(q.text)}</div>`}
+  ${qBody}
+  <div style="display:flex;justify-content:space-between;margin-top:22px;">
+    <button class="btn btn-outline" ${dispIdx===0?'disabled':''} onclick="goToQuestion(${dispIdx-1})">← Previous</button>
+    ${dispIdx<total-1
+      ? `<button id="test-nav-next" class="btn btn-primary" ${canSubmitQ?'':'disabled'} onclick="goToQuestion(${dispIdx+1})">Next →</button>`
+      : `<button id="test-nav-next" class="btn btn-primary" ${canSubmitQ?'':'disabled'} onclick="submitTest()">Submit test</button>`}
+  </div>
+  `;
+}
+
+function drawMatchLines(){
+  document.querySelectorAll('[id^="match-wrap-"]').forEach(wrap=>{
+    const qi = wrap.id.replace('match-wrap-','');
+    const svg = document.getElementById('match-svg-'+qi);
+    if(!svg) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    svg.setAttribute('width', wrapRect.width);
+    svg.setAttribute('height', wrapRect.height);
+    svg.innerHTML='';
+    const pairs = state.takingAnswers[qi] || [];
+    pairs.forEach(p=>{
+      const leftEl = wrap.querySelector(`.match-item.left[data-idx="${p.left}"]`);
+      const rightEl = wrap.querySelector(`.match-item.right[data-idx="${p.right}"]`);
+      if(!leftEl||!rightEl) return;
+      const lr = leftEl.getBoundingClientRect(), rr = rightEl.getBoundingClientRect();
+      const x1 = lr.right - wrapRect.left, y1 = lr.top + lr.height/2 - wrapRect.top;
+      const x2 = rr.left - wrapRect.left, y2 = rr.top + rr.height/2 - wrapRect.top;
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',x1); line.setAttribute('y1',y1);
+      line.setAttribute('x2',x2); line.setAttribute('y2',y2);
+      line.setAttribute('stroke','#3B6EA5'); line.setAttribute('stroke-width','2');
+      line.setAttribute('stroke-dasharray','5,4');
+      svg.appendChild(line);
+    });
+  });
+}
+
+function renderTestResult(){
+  const subRaw = DATA.submissions[state.resultSubmissionId];
+  if(!subRaw) return `<p>Result not found.</p>`;
+  const sub = Object.assign({id:state.resultSubmissionId}, subRaw);
+  const t = DATA.tests[sub.testId];
+  const pct = sub.total ? Math.round((sub.score/sub.total)*100) : 0;
+  const backView = state.role==='teacher' ? 'teacher-results' : 'student-subject';
+  return `
+  <button class="back-link" onclick="setState({view:'${backView}', resultsTestId: sub.testId})">← Back</button>
+  <div class="page-head"><h1>${esc(t.title)}</h1></div>
+  <div class="score-hero">
+    <div class="num">${sub.score}<span>/${sub.total}</span></div>
+    <div class="meta" style="margin-top:6px;">${pct}% correct${sub.pendingEssays?' · '+sub.pendingEssays+' awaiting review':''}</div>
+  </div>
+  ${sub.detail.map((d,i)=>{
+    const status = d.correct===true ? 'correct' : d.correct===false ? 'incorrect' : 'pending';
+    const tagLabel = d.correct===true ? 'Correct' : d.correct===false ? 'Incorrect' : 'Awaiting review';
+    const showAnswer = (d.question.type==='shortanswer' || d.question.type==='fillblank' || d.question.type==='essay');
+    return `
+    <div class="review-row ${status}">
+      <div class="tag">${tagLabel} · Question ${i+1}</div>
+      <div style="margin-top:4px;font-weight:600;">${esc(d.question.text)}</div>
+      ${showAnswer ? `<div class="answer-given"><div class="lbl">Answer given</div>${esc(d.answer||'(blank)')}</div>` : ''}
+      ${state.role==='teacher' && d.correct===null ? `
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="gradeEssay('${sub.id}',${i},true)">Mark correct</button>
+          <button class="btn btn-danger btn-sm" onclick="gradeEssay('${sub.id}',${i},false)">Mark incorrect</button>
+        </div>
+      ` : ''}
+    </div>`;
+  }).join('')}
+  `;
+}
+
+async function gradeEssay(subId, qIndex, isCorrect){
+  const sub = DATA.submissions[subId];
+  if(!sub || sub.detail[qIndex].correct !== null) return;
+  sub.detail[qIndex].correct = isCorrect;
+  if(isCorrect) sub.score++;
+  sub.pendingEssays = Math.max(0, (sub.pendingEssays||0) - 1);
+  await saveData();
+  render();
+  toast(isCorrect ? 'Marked correct' : 'Marked incorrect');
+}
+
+(async function boot(){
+  document.getElementById('app').innerHTML = '<main><p style="text-align:center;padding:60px;color:#818979;">Loading…</p></main>';
+  await loadData();
+  render();
+})();
+</script>
+</body>
+</html>
