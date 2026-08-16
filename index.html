@@ -163,11 +163,10 @@
     padding:3px 8px;border-radius:6px;display:inline-block;margin-bottom:10px;
   }
   .qtype-badge.mcq{background:var(--marker-blue-dim);color:var(--marker-blue);}
-  .qtype-badge.msq{background:var(--marker-blue-dim);color:var(--marker-blue);}
   .qtype-badge.tf{background:var(--marker-yellow-dim);color:#8a6412;}
-  .qtype-badge.order{background:var(--marker-yellow-dim);color:#8a6412;}
-  .qtype-badge.saq{background:var(--marker-purple-dim);color:var(--marker-purple);}
   .qtype-badge.match{background:var(--marker-red-dim);color:var(--marker-red);}
+  .qtype-badge.short{background:var(--marker-purple-dim);color:var(--marker-purple);}
+  .qtype-badge.long{background:var(--paper-dim);color:var(--muted);}
   .qcard .remove-q{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:13px;}
   .qcard .remove-q:hover{color:var(--marker-red);}
   .opt-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
@@ -197,20 +196,15 @@
   .match-item.paired{border-color:var(--marker-blue);}
   .match-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
 
-  .order-list{display:flex;flex-direction:column;gap:8px;}
-  .order-item{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:9px;padding:10px 14px;background:#fff;}
-  .order-pos{font-family:'JetBrains Mono';font-weight:700;color:var(--marker-blue);width:20px;flex-shrink:0;}
-  .order-label{flex:1;font-size:14px;}
-  .order-controls{display:flex;gap:6px;}
-  .order-controls button{padding:4px 10px;}
-
   .score-hero{text-align:center;padding:34px 20px;background:#fff;border:1px solid var(--line);border-radius:16px;margin-bottom:24px;}
   .score-hero .num{font-family:'Space Grotesk';font-size:52px;font-weight:700;color:var(--chalk-dark);}
   .score-hero .num span{font-size:22px;color:var(--muted);font-weight:500;}
   .review-row{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;}
   .review-row.correct{border-left:4px solid #4f8f5f;}
   .review-row.incorrect{border-left:4px solid var(--marker-red);}
+  .review-row.pending{border-left:4px solid var(--marker-yellow);}
   .review-row .tag{font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);}
+  .settings-check{display:flex;align-items:center;gap:8px;text-transform:none;font-weight:500;color:var(--ink);font-size:14px;}
 
   table.results-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
   table.results-table th,table.results-table td{padding:11px 14px;text-align:left;font-size:13.5px;border-bottom:1px solid var(--line);}
@@ -310,6 +304,8 @@ let state = {
 
   activeTestId:null,
   takingTestId:null,
+  takingQuestions:[],
+  takingDeadlineAt:null,
   takingAnswers:{},
   takingPending:{},
   takingIndex:0,
@@ -384,6 +380,53 @@ function materialTypeInfo(typeId){
   return MATERIAL_TYPES.find(t=>t.id===typeId) || MATERIAL_TYPES[3];
 }
 
+function testSettings(t){
+  return Object.assign({shuffle:false, timeLimitMin:0, showResults:true, allowRetake:true}, (t&&t.settings)||{});
+}
+function shuffleArray(arr){
+  const a = arr.slice();
+  for(let k=a.length-1;k>0;k--){ const j=Math.floor(Math.random()*(k+1)); [a[k],a[j]]=[a[j],a[k]]; }
+  return a;
+}
+function answerPreview(q, ans){
+  if(q.type==='mcq') return (ans!=null && q.options[ans]!==undefined) ? q.options[ans] : '(no answer)';
+  if(q.type==='tf') return ans===true ? 'True' : ans===false ? 'False' : '(no answer)';
+  if(q.type==='match') return (ans && ans.length) ? ans.map(p=>`${q.terms[p.left]} → ${q.defs[p.right]}`).join('; ') : '(no answer)';
+  if(q.type==='short' || q.type==='long') return (ans && String(ans).trim()) ? ans : '(no answer)';
+  return '';
+}
+
+/* =========================================================
+   TEST TIMER (for tests with a time limit)
+   ========================================================= */
+let testTimerInterval = null;
+function clearTestTimer(){
+  if(testTimerInterval){ clearInterval(testTimerInterval); testTimerInterval=null; }
+}
+function formatCountdown(ms){
+  const total = Math.max(0, Math.ceil(ms/1000));
+  const m = Math.floor(total/60), s = total%60;
+  return m+':'+String(s).padStart(2,'0');
+}
+function startTestTimer(){
+  clearTestTimer();
+  testTimerInterval = setInterval(()=>{
+    const el = document.getElementById('test-timer');
+    if(!el || !state.takingDeadlineAt || state.view!=='take-test'){ clearTestTimer(); return; }
+    const remain = state.takingDeadlineAt - Date.now();
+    if(remain<=0){
+      clearTestTimer();
+      autoSubmitTest();
+      return;
+    }
+    el.textContent = formatCountdown(remain);
+  }, 1000);
+}
+async function autoSubmitTest(){
+  toast("Time's up — submitting your test");
+  await submitTest();
+}
+
 /* =========================================================
    PORTAL NAVIGATION (no accounts — pick a portal, go straight in)
    ========================================================= */
@@ -394,6 +437,7 @@ function enterStudentPortal(){
   setState({view:'student-dashboard', role:'student', studentActiveClassroomId:null});
 }
 function goHome(){
+  clearTestTimer();
   setState({view:'landing', role:null,
     activeClassroomId:null, activeSubjectId:null, studentActiveClassroomId:null, studentActiveSubjectId:null});
 }
@@ -479,17 +523,12 @@ function startTestBuilder(subjectId){
 }
 
 function addBuilderQuestion(type){
-  const q = type==='mcq'
-    ? {type:'mcq', text:'', options:['',''], correct:0}
-    : type==='msq'
-    ? {type:'msq', text:'', options:['',''], correct:[]}
-    : type==='tf'
-    ? {type:'tf', text:'', correct:true}
-    : type==='saq'
-    ? {type:'saq', text:'', answers:['']}
-    : type==='order'
-    ? {type:'order', text:'', items:['','','']}
-    : {type:'match', text:'Match each term to its definition', terms:['',''], defs:['','']};
+  let q;
+  if(type==='mcq') q = {type:'mcq', text:'', options:['',''], correct:0};
+  else if(type==='tf') q = {type:'tf', text:'', correct:true};
+  else if(type==='match') q = {type:'match', text:'Match each term to its definition', terms:['',''], defs:['','']};
+  else if(type==='short') q = {type:'short', text:'', accepted:['']};
+  else q = {type:'long', text:'', modelAnswer:''};
   setState({builderQuestions:[...state.builderQuestions, q]});
 }
 function removeBuilderQuestion(idx){
@@ -510,13 +549,17 @@ async function saveTest(){
   for(const q of state.builderQuestions){
     if(!q.text || !q.text.trim()){ toast('Every question needs its text filled in'); return; }
     if(q.type==='mcq' && q.options.some(o=>!o.trim())){ toast('Fill in every answer choice'); return; }
-    if(q.type==='msq' && (q.options.some(o=>!o.trim()) || q.correct.length===0)){ toast('Fill in every choice and mark at least one correct answer'); return; }
-    if(q.type==='saq' && q.answers.every(a=>!a.trim())){ toast('Add at least one accepted answer'); return; }
-    if(q.type==='order' && q.items.some(it=>!it.trim())){ toast('Fill in every item to order'); return; }
     if(q.type==='match' && (q.terms.some(t=>!t.trim()) || q.defs.some(d=>!d.trim()))){ toast('Fill in every term and definition'); return; }
+    if(q.type==='short' && !(q.accepted||[]).some(a=>a.trim())){ toast('Give at least one accepted answer for each short-answer question'); return; }
   }
+  const settings = {
+    shuffle: !!document.getElementById('builder-shuffle').checked,
+    timeLimitMin: Math.max(0, parseInt(document.getElementById('builder-timelimit').value,10) || 0),
+    showResults: !!document.getElementById('builder-showresults').checked,
+    allowRetake: !!document.getElementById('builder-allowretake').checked
+  };
   const id = uid('test');
-  DATA.tests[id] = { subjectId: state.builderSubjectId, title, questions: state.builderQuestions };
+  DATA.tests[id] = { subjectId: state.builderSubjectId, title, questions: state.builderQuestions, settings };
   await saveData();
   setState({view:'subject-detail', activeSubjectId: state.builderSubjectId, activeSubjectTab:'tests'});
   toast('Test saved');
@@ -558,8 +601,10 @@ function openStudentSubject(id){
 }
 
 function beginTest(testId){
+  clearTestTimer();
   setState({view:'take-test-identify', takingTestId:testId,
-    takingIdentity:{name:'', cls:'', number:''}, identityError:''});
+    takingIdentity:{name:'', cls:'', number:''}, identityError:'',
+    takingQuestions:[], takingDeadlineAt:null});
 }
 
 function startIdentifiedTest(){
@@ -569,8 +614,33 @@ function startIdentifiedTest(){
   if(!name || !cls || !number){
     setState({identityError:'Fill in your name, class, and number to start.'}); return;
   }
+  const t = DATA.tests[state.takingTestId];
+  const settings = testSettings(t);
+  if(!settings.allowRetake){
+    const already = testSubmissions(state.takingTestId).some(s=>
+      s.studentName.trim().toLowerCase()===name.toLowerCase() &&
+      s.studentClass.trim().toLowerCase()===cls.toLowerCase() &&
+      s.studentNumber.trim().toLowerCase()===number.toLowerCase()
+    );
+    if(already){
+      setState({identityError:'You already completed this test — retakes are turned off.'}); return;
+    }
+  }
+  const questions = settings.shuffle ? shuffleArray(t.questions) : t.questions.slice();
+  const deadline = settings.timeLimitMin>0 ? Date.now()+settings.timeLimitMin*60000 : null;
   setState({view:'take-test', takingAnswers:{}, takingPending:{}, takingIndex:0,
-    takingIdentity:{name, cls, number}, identityError:''});
+    takingIdentity:{name, cls, number}, identityError:'',
+    takingQuestions:questions, takingDeadlineAt:deadline});
+  if(deadline) startTestTimer();
+}
+
+function updateTextAnswer(qIndex, val){
+  state.takingAnswers = Object.assign({}, state.takingAnswers, {[qIndex]: val});
+}
+
+function exitTakeTest(){
+  clearTestTimer();
+  setState({view:'student-subject'});
 }
 
 function selectMcq(qIndex, optIndex){
@@ -579,23 +649,6 @@ function selectMcq(qIndex, optIndex){
 }
 function selectTf(qIndex, val){
   const a = Object.assign({}, state.takingAnswers, {[qIndex]:val});
-  setState({takingAnswers:a});
-}
-function toggleMsq(qIndex, optIndex){
-  const sel = (state.takingAnswers[qIndex] || []).slice();
-  const next = sel.includes(optIndex) ? sel.filter(x=>x!==optIndex) : [...sel, optIndex];
-  const a = Object.assign({}, state.takingAnswers, {[qIndex]:next});
-  setState({takingAnswers:a});
-}
-function setSaqAnswer(qIndex, val){
-  state.takingAnswers = Object.assign({}, state.takingAnswers, {[qIndex]:val});
-}
-function moveOrderItem(qIndex, pos, dir){
-  const seq = (state.takingAnswers[qIndex] || []).slice();
-  const newPos = pos + dir;
-  if(newPos<0 || newPos>=seq.length) return;
-  [seq[pos], seq[newPos]] = [seq[newPos], seq[pos]];
-  const a = Object.assign({}, state.takingAnswers, {[qIndex]:seq});
   setState({takingAnswers:a});
 }
 function matchClickLeft(qIndex, leftIdx){
@@ -616,33 +669,28 @@ function matchClickRight(qIndex, rightIdx){
 function goToQuestion(i){ setState({takingIndex:i}); }
 
 async function submitTest(){
+  clearTestTimer();
   const test = DATA.tests[state.takingTestId];
+  const settings = testSettings(test);
+  const questions = (state.takingQuestions && state.takingQuestions.length) ? state.takingQuestions : test.questions;
   let score = 0;
-  const total = test.questions.length;
+  const total = questions.length;
   const detail = [];
-  test.questions.forEach((q, i)=>{
+  questions.forEach((q, i)=>{
     const ans = state.takingAnswers[i];
     let correct = false;
     if(q.type==='mcq') correct = ans===q.correct;
     else if(q.type==='tf') correct = ans===q.correct;
-    else if(q.type==='msq'){
-      const sel = (ans||[]).slice().sort();
-      const want = (q.correct||[]).slice().sort();
-      correct = sel.length===want.length && sel.every((v,vi)=>v===want[vi]);
-    }
-    else if(q.type==='saq'){
-      const given = String(ans||'').trim().toLowerCase();
-      correct = given!=='' && (q.answers||[]).some(a=>a.trim().toLowerCase()===given);
-    }
-    else if(q.type==='order'){
-      const seq = ans || [];
-      correct = seq.length===q.items.length && seq.every((v,vi)=>v===vi);
-    }
     else if(q.type==='match'){
       const pairs = ans || [];
       correct = pairs.length===q.terms.length && pairs.every(p=>p.left===p.right);
+    } else if(q.type==='short'){
+      const accepted = (q.accepted||[]).map(a=>a.trim().toLowerCase()).filter(Boolean);
+      correct = accepted.includes(String(ans||'').trim().toLowerCase());
+    } else if(q.type==='long'){
+      correct = null; // needs manual grading by the teacher
     }
-    if(correct) score++;
+    if(correct===true) score++;
     detail.push({question:q, answer:ans, correct});
   });
   const subId = uid('sub');
@@ -655,7 +703,23 @@ async function submitTest(){
     submittedAt: Date.now()
   };
   await saveData();
-  setState({view:'test-result', resultSubmissionId:subId});
+  if(settings.showResults){
+    setState({view:'test-result', resultSubmissionId:subId});
+  } else {
+    setState({view:'test-submitted-notice', resultSubmissionId:subId});
+  }
+}
+
+async function gradeLongAnswer(subId, qIndex, isCorrect){
+  const sub = DATA.submissions[subId];
+  if(!sub) return;
+  const was = sub.detail[qIndex].correct;
+  sub.detail[qIndex].correct = isCorrect;
+  if(was!==true && isCorrect===true) sub.score++;
+  if(was===true && isCorrect===false) sub.score--;
+  await saveData();
+  render();
+  toast(isCorrect ? 'Marked correct' : 'Marked incorrect');
 }
 
 /* =========================================================
@@ -675,6 +739,7 @@ function render(){
   else if(state.view==='student-subject') body = renderStudentSubject();
   else if(state.view==='take-test-identify') body = renderTakeTestIdentify();
   else if(state.view==='take-test') body = renderTakeTest();
+  else if(state.view==='test-submitted-notice') body = renderTestSubmittedNotice();
   else if(state.view==='test-result') body = renderTestResult();
   else body = renderLanding();
 
@@ -717,7 +782,7 @@ function renderLanding(){
   return `
   <div class="landing-hero">
     <h1>Run your classroom<br>without the paperwork.</h1>
-    <p>Set up classes, drop in subjects, share materials, and write tests with multiple choice, true/false, and matching questions — all graded for you.</p>
+    <p>Set up classes, drop in subjects, share materials, and write tests with multiple choice, true/false, matching, short answer, and long answer questions — with shuffle, time limits, and retake controls.</p>
   </div>
   <div class="portal-choice">
     <div class="portal-card">
@@ -895,15 +960,31 @@ function renderTestBuilder(){
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:22px;max-width:500px;">
+    <h3 style="margin:0 0 12px;font-size:15px;">Test settings</h3>
+    <div class="field" style="margin-bottom:10px;">
+      <label class="settings-check"><input type="checkbox" id="builder-shuffle"> Shuffle question order for each student</label>
+    </div>
+    <div class="field" style="margin-bottom:10px;">
+      <label>Time limit (minutes — 0 for no limit)</label>
+      <input type="number" id="builder-timelimit" min="0" step="1" value="0" style="max-width:120px;">
+    </div>
+    <div class="field" style="margin-bottom:10px;">
+      <label class="settings-check"><input type="checkbox" id="builder-showresults" checked> Show results to students right after they submit</label>
+    </div>
+    <div class="field" style="margin-bottom:0;">
+      <label class="settings-check"><input type="checkbox" id="builder-allowretake" checked> Allow students to retake this test</label>
+    </div>
+  </div>
+
   ${qs.map((q,idx)=>renderBuilderQuestion(q, idx)).join('')}
 
   <div class="add-q-bar">
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('mcq')">+ Multiple choice</button>
-    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('msq')">+ Multiple select</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('tf')">+ True / False</button>
-    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('saq')">+ Short answer</button>
-    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('order')">+ Ordering</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('match')">+ Matching (connect the line)</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('short')">+ Short answer</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('long')">+ Long answer</button>
   </div>
 
   <button class="btn btn-primary" onclick="saveTest()">Save test</button>
@@ -942,57 +1023,34 @@ function renderBuilderQuestion(q, idx){
       </div>
     </div>`;
   }
-  if(q.type==='msq'){
+  if(q.type==='short'){
     return `<div class="qcard">
       <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
-      <span class="qtype-badge msq">Multiple select</span>
+      <span class="qtype-badge short">Short answer</span>
       <div class="field"><label>Question ${idx+1}</label>
         <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
       </div>
-      ${q.options.map((opt,oi)=>`
+      ${q.accepted.map((a,ai)=>`
         <div class="opt-row">
-          <input type="checkbox" ${q.correct.includes(oi)?'checked':''} onchange="(function(){const qs=state.builderQuestions;const c=qs[${idx}].correct.slice();const has=c.includes(${oi});const nc=has?c.filter(x=>x!==${oi}):[...c,${oi}];qs[${idx}]=Object.assign({},qs[${idx}],{correct:nc});}).call(this)">
-          <input type="text" placeholder="Choice ${oi+1}" value="${esc(opt)}" oninput="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o[${oi}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{options:o});}).call(this)">
-          ${q.options.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.splice(${oi},1);const c=qs[${idx}].correct.filter(x=>x!==${oi}).map(x=>x>${oi}?x-1:x);qs[${idx}]=Object.assign({},qs[${idx}],{options:o,correct:c}); render();})()">✕</button>` : ''}
+          <input type="text" placeholder="Accepted answer ${ai+1}" value="${esc(a)}" oninput="(function(){const qs=state.builderQuestions;const acc=qs[${idx}].accepted.slice();acc[${ai}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{accepted:acc});}).call(this)">
+          ${q.accepted.length>1 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const acc=qs[${idx}].accepted.slice();acc.splice(${ai},1);qs[${idx}]=Object.assign({},qs[${idx}],{accepted:acc});render();})()">✕</button>` : ''}
         </div>
       `).join('')}
-      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.push('');qs[${idx}]=Object.assign({},qs[${idx}],{options:o});render();})()">+ Add choice</button>
-      <div class="meta" style="margin-top:8px;">Check every correct answer — there can be more than one.</div>
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const acc=qs[${idx}].accepted.slice();acc.push('');qs[${idx}]=Object.assign({},qs[${idx}],{accepted:acc});render();})()">+ Add alternate answer</button>
+      <div class="meta" style="margin-top:8px;">Graded automatically — matches any accepted answer, not case-sensitive.</div>
     </div>`;
   }
-  if(q.type==='saq'){
+  if(q.type==='long'){
     return `<div class="qcard">
       <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
-      <span class="qtype-badge saq">Short answer</span>
+      <span class="qtype-badge long">Long answer</span>
       <div class="field"><label>Question ${idx+1}</label>
         <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
       </div>
-      ${q.answers.map((a,ai)=>`
-        <div class="opt-row">
-          <input type="text" placeholder="Accepted answer ${ai+1}" value="${esc(a)}" style="flex:1" oninput="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].answers.slice();arr[${ai}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{answers:arr});}).call(this)">
-          ${q.answers.length>1 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].answers.slice();arr.splice(${ai},1);qs[${idx}]=Object.assign({},qs[${idx}],{answers:arr});render();})()">✕</button>` : ''}
-        </div>
-      `).join('')}
-      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].answers.slice();arr.push('');qs[${idx}]=Object.assign({},qs[${idx}],{answers:arr});render();})()">+ Add accepted answer</button>
-      <div class="meta" style="margin-top:8px;">List every acceptable wording (not case-sensitive). Students type their answer into a text box.</div>
-    </div>`;
-  }
-  if(q.type==='order'){
-    return `<div class="qcard">
-      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
-      <span class="qtype-badge order">Ordering</span>
-      <div class="field"><label>Question ${idx+1}</label>
-        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      <div class="field" style="margin-bottom:4px;"><label>Model answer (optional — for your reference only)</label>
+        <textarea rows="2" oninput="updateBuilderQuestion(${idx},{modelAnswer:this.value})">${esc(q.modelAnswer||'')}</textarea>
       </div>
-      <div class="meta" style="margin-bottom:8px;">List the items in the correct order — students will see them shuffled and reorder with arrows.</div>
-      ${q.items.map((it,ii)=>`
-        <div class="opt-row">
-          <span class="mono" style="width:20px;color:var(--muted);">${ii+1}.</span>
-          <input type="text" placeholder="Item ${ii+1}" value="${esc(it)}" style="flex:1" oninput="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].items.slice();arr[${ii}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{items:arr});}).call(this)">
-          ${q.items.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].items.slice();arr.splice(${ii},1);qs[${idx}]=Object.assign({},qs[${idx}],{items:arr});render();})()">✕</button>` : ''}
-        </div>
-      `).join('')}
-      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].items.slice();arr.push('');qs[${idx}]=Object.assign({},qs[${idx}],{items:arr});render();})()">+ Add item</button>
+      <div class="meta">Students type a written response — you grade these by hand after they submit.</div>
     </div>`;
   }
   return `<div class="qcard">
@@ -1023,11 +1081,17 @@ function renderTeacherResults(){
   <div class="page-head"><h1>${esc(t.title)} — results</h1></div>
   ${subs.length===0 ? `<div class="empty-state">No one has submitted this test yet.</div>` : `
   <table class="results-table">
-    <thead><tr><th>Name</th><th>Class</th><th>Number</th><th>Score</th><th>Percent</th></tr></thead>
+    <thead><tr><th>Name</th><th>Class</th><th>Number</th><th>Score</th><th>Percent</th><th></th></tr></thead>
     <tbody>
       ${subs.map(s=>{
-        const pct = Math.round((s.score/s.total)*100);
-        return `<tr><td>${esc(s.studentName)}</td><td>${esc(s.studentClass)}</td><td>${esc(s.studentNumber)}</td><td>${s.score} / ${s.total}</td><td>${pct}%</td></tr>`;
+        const pendingCount = s.detail.filter(d=>d.correct===null).length;
+        const gradedTotal = s.total - pendingCount;
+        const pctLabel = pendingCount>0 ? 'Needs review' : (gradedTotal>0 ? Math.round((s.score/gradedTotal)*100)+'%' : '—');
+        return `<tr>
+          <td>${esc(s.studentName)}</td><td>${esc(s.studentClass)}</td><td>${esc(s.studentNumber)}</td>
+          <td>${s.score} / ${s.total}</td><td>${pctLabel}</td>
+          <td><button class="btn btn-outline btn-sm" onclick="setState({view:'test-result', resultSubmissionId:'${s.id}'})">Review</button></td>
+        </tr>`;
       }).join('')}
     </tbody>
   </table>`}
@@ -1157,9 +1221,10 @@ function renderTakeTestIdentify(){
 function renderTakeTest(){
   const t = DATA.tests[state.takingTestId];
   if(!t) return `<p>Test not found.</p>`;
+  const questions = (state.takingQuestions && state.takingQuestions.length) ? state.takingQuestions : t.questions;
   const i = state.takingIndex;
-  const q = t.questions[i];
-  const total = t.questions.length;
+  const q = questions[i];
+  const total = questions.length;
   const answered = state.takingAnswers[i]!==undefined;
 
   let qBody = '';
@@ -1173,42 +1238,6 @@ function renderTakeTest(){
     qBody = `
       <div class="choice-row ${state.takingAnswers[i]===true?'selected':''}" onclick="selectTf(${i},true)">True</div>
       <div class="choice-row ${state.takingAnswers[i]===false?'selected':''}" onclick="selectTf(${i},false)">False</div>
-    `;
-  } else if(q.type==='msq'){
-    const sel = state.takingAnswers[i] || [];
-    qBody = q.options.map((opt,oi)=>`
-      <div class="choice-row ${sel.includes(oi)?'selected':''}" onclick="toggleMsq(${i},${oi})">
-        <span>${esc(opt)}</span>
-      </div>
-    `).join('') + `<div class="meta" style="margin-top:6px;">Select all that apply.</div>`;
-  } else if(q.type==='saq'){
-    qBody = `
-      <div class="field"><input type="text" id="saq-input-${i}" placeholder="Type your answer" value="${esc(state.takingAnswers[i]||'')}" oninput="setSaqAnswer(${i}, this.value)"></div>
-    `;
-  } else if(q.type==='order'){
-    if(!state._shuffleCache) state._shuffleCache = {};
-    const orderCacheKey = 'order-'+state.takingTestId+'-'+i;
-    if(!state._shuffleCache[orderCacheKey]){
-      const order = q.items.map((_,idx)=>idx);
-      for(let k=order.length-1;k>0;k--){ const j=Math.floor(Math.random()*(k+1)); [order[k],order[j]]=[order[j],order[k]]; }
-      state._shuffleCache[orderCacheKey]=order;
-    }
-    if(!state.takingAnswers[i]) state.takingAnswers[i] = state._shuffleCache[orderCacheKey].slice();
-    const seq = state.takingAnswers[i];
-    qBody = `
-      <div class="order-list">
-        ${seq.map((origIdx,pos)=>`
-          <div class="order-item">
-            <span class="order-pos">${pos+1}</span>
-            <span class="order-label">${esc(q.items[origIdx])}</span>
-            <div class="order-controls">
-              <button type="button" class="btn btn-outline btn-sm" ${pos===0?'disabled':''} onclick="moveOrderItem(${i},${pos},-1)">↑</button>
-              <button type="button" class="btn btn-outline btn-sm" ${pos===seq.length-1?'disabled':''} onclick="moveOrderItem(${i},${pos},1)">↓</button>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-      <div class="meta" style="margin-top:10px;">Use the arrows to put the items in the correct order.</div>
     `;
   } else if(q.type==='match'){
     if(!state._shuffleCache) state._shuffleCache = {};
@@ -1240,19 +1269,33 @@ function renderTakeTest(){
       </div>
       <div class="meta" style="margin-top:10px;">Click a term, then click its matching definition to connect them.</div>
     `;
+  } else if(q.type==='short'){
+    const val = state.takingAnswers[i] || '';
+    qBody = `
+      <div class="field">
+        <input type="text" placeholder="Type your answer" value="${esc(val)}"
+          oninput="updateTextAnswer(${i}, this.value)" onblur="render()">
+      </div>`;
+  } else if(q.type==='long'){
+    const val = state.takingAnswers[i] || '';
+    qBody = `
+      <div class="field">
+        <textarea rows="6" placeholder="Write your answer"
+          oninput="updateTextAnswer(${i}, this.value)" onblur="render()">${esc(val)}</textarea>
+      </div>`;
   }
 
-  const canSubmitQ = q.type==='match' ? (state.takingAnswers[i]||[]).length===q.terms.length
-    : q.type==='msq' ? (state.takingAnswers[i]||[]).length>0
-    : q.type==='order' ? true
-    : q.type==='saq' ? true
-    : answered;
+  let canSubmitQ;
+  if(q.type==='match') canSubmitQ = (state.takingAnswers[i]||[]).length===q.terms.length;
+  else if(q.type==='short' || q.type==='long') canSubmitQ = !!(state.takingAnswers[i] && String(state.takingAnswers[i]).trim());
+  else canSubmitQ = answered;
 
   return `
-  <button class="back-link" onclick="setState({view:'student-subject'})">← Exit test</button>
+  <button class="back-link" onclick="exitTakeTest()">← Exit test</button>
   <div class="page-head"><h1>${esc(t.title)}</h1></div>
+  ${state.takingDeadlineAt ? `<div class="meta" style="margin-bottom:12px;">⏱ Time remaining: <span id="test-timer" class="mono">${formatCountdown(state.takingDeadlineAt-Date.now())}</span></div>` : ''}
   <div class="progress-track">
-    ${t.questions.map((_,qi)=>`<div class="seg ${state.takingAnswers[qi]!==undefined?'done':''}"></div>`).join('')}
+    ${questions.map((_,qi)=>`<div class="seg ${state.takingAnswers[qi]!==undefined?'done':''}"></div>`).join('')}
   </div>
   <div class="meta" style="margin-bottom:6px;">Question ${i+1} of ${total}</div>
   <div class="q-text">${esc(q.text)}</div>
@@ -1293,11 +1336,24 @@ function drawMatchLines(){
   });
 }
 
+function renderTestSubmittedNotice(){
+  return `
+  <div class="auth-wrap">
+    <div class="card" style="text-align:center;">
+      <h2>Test submitted ✅</h2>
+      <p class="meta">Your answers have been recorded. Your teacher will share your results.</p>
+      <button class="btn btn-primary btn-full" onclick="setState({view:'student-subject'})">Back to subject</button>
+    </div>
+  </div>`;
+}
+
 function renderTestResult(){
   const sub = DATA.submissions[state.resultSubmissionId];
   if(!sub) return `<p>Result not found.</p>`;
   const t = DATA.tests[sub.testId];
-  const pct = Math.round((sub.score/sub.total)*100);
+  const pendingCount = sub.detail.filter(d=>d.correct===null).length;
+  const gradedTotal = sub.total - pendingCount;
+  const pct = gradedTotal>0 ? Math.round((sub.score/gradedTotal)*100) : null;
   const backView = state.role==='teacher' ? 'teacher-results' : 'student-subject';
   return `
   <button class="back-link" onclick="setState({view:'${backView}', resultsTestId: '${sub.testId}'})">← Back</button>
@@ -1305,14 +1361,26 @@ function renderTestResult(){
   ${sub.studentName ? `<div class="meta" style="margin:-14px 0 18px;">${esc(sub.studentName)} · ${esc(sub.studentClass)} · No. ${esc(sub.studentNumber)}</div>` : ''}
   <div class="score-hero">
     <div class="num">${sub.score}<span>/${sub.total}</span></div>
-    <div class="meta" style="margin-top:6px;">${pct}% correct</div>
+    <div class="meta" style="margin-top:6px;">${pct===null ? 'Awaiting grading' : pct+'% correct'}${pendingCount>0 ? ` · ${pendingCount} response${pendingCount===1?'':'s'} awaiting review` : ''}</div>
   </div>
-  ${sub.detail.map((d,i)=>`
-    <div class="review-row ${d.correct?'correct':'incorrect'}">
-      <div class="tag">${d.correct?'Correct':'Incorrect'} · Question ${i+1}</div>
+  ${sub.detail.map((d,i)=>{
+    const preview = answerPreview(d.question, d.answer);
+    const isPending = d.correct===null;
+    const tagLabel = isPending ? 'Awaiting review' : (d.correct?'Correct':'Incorrect');
+    const rowClass = isPending ? 'pending' : (d.correct?'correct':'incorrect');
+    return `
+    <div class="review-row ${rowClass}">
+      <div class="tag">${tagLabel} · Question ${i+1}</div>
       <div style="margin-top:4px;font-weight:600;">${esc(d.question.text)}</div>
-    </div>
-  `).join('')}
+      <div class="meta" style="margin-top:4px;">Answer: ${esc(preview)}</div>
+      ${d.question.type==='long' && d.question.modelAnswer && state.role==='teacher' ? `<div class="meta" style="margin-top:2px;">Model answer: ${esc(d.question.modelAnswer)}</div>` : ''}
+      ${isPending && state.role==='teacher' ? `
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="gradeLongAnswer('${state.resultSubmissionId}',${i},true)">Mark correct</button>
+          <button class="btn btn-outline btn-sm" onclick="gradeLongAnswer('${state.resultSubmissionId}',${i},false)">Mark incorrect</button>
+        </div>` : ''}
+    </div>`;
+  }).join('')}
   `;
 }
 
