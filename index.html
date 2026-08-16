@@ -245,6 +245,18 @@
   .confirm-box{background:#fff;border-radius:14px;padding:24px;max-width:360px;width:100%;box-shadow:0 14px 34px rgba(0,0,0,.22);}
   .confirm-box p{margin:0 0 18px;font-size:15px;color:var(--ink);}
   .confirm-actions{display:flex;justify-content:flex-end;gap:10px;}
+
+  .due-pill{
+    display:inline-flex;align-items:center;gap:6px;background:var(--marker-purple-dim);color:var(--marker-purple);
+    font-weight:700;padding:4px 10px;border-radius:7px;font-size:12px;
+  }
+  .due-pill.overdue{background:var(--marker-red-dim);color:var(--marker-red);}
+  .submission-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:14px;}
+  .grade-badge{
+    display:inline-flex;align-items:center;font-weight:700;padding:3px 9px;border-radius:7px;font-size:12.5px;
+    background:#e5f1e7;color:#3d7a4a;
+  }
+  .grade-badge.pending{background:var(--marker-yellow-dim);color:#8a6412;}
   @media(max-width:640px){
     .match-wrap{gap:24px;}
     .landing-hero h1{font-size:32px;}
@@ -258,7 +270,7 @@
 /* =========================================================
    DATA LAYER
    Hierarchy: classroom (e.g. 7A) -> subjects (e.g. English,
-   Math) -> materials (links/slides/docs) + tests.
+   Math) -> materials (links/slides/docs) + tests + projects.
    Everything shared so teacher + student views see one world.
    NOTE: passwords are stored in plain text — fine for a
    prototype, not for a real deployment with real students.
@@ -267,7 +279,7 @@ const DATA_KEY = 'chalkline-data-v3';
 let DATA = null;
 
 function blankData(){
-  return { classrooms:{}, subjects:{}, materials:{}, tests:{}, submissions:{} };
+  return { classrooms:{}, subjects:{}, materials:{}, tests:{}, submissions:{}, projects:{}, projectSubmissions:{} };
 }
 
 async function loadData(){
@@ -285,7 +297,7 @@ async function saveData(){
   try{
     localStorage.setItem(DATA_KEY, JSON.stringify(DATA));
   }catch(e){
-    toast('Could not save — try again');
+    toast('Could not save — the file you attached may be too large for storage');
   }
 }
 
@@ -306,6 +318,8 @@ const MATERIAL_TYPES = [
   {id:'video', label:'Video', icon:'🎬'},
   {id:'link', label:'Link', icon:'🔗'}
 ];
+
+const MAX_PROJECT_FILE_BYTES = 4 * 1024 * 1024; // 4MB — localStorage has limited space
 
 /* =========================================================
    APP STATE
@@ -345,7 +359,17 @@ let state = {
 
   gradeLookupTestId:null,
   gradeLookupIdentity:{name:'', cls:'', number:''},
-  gradeLookupError:''
+  gradeLookupError:'',
+
+  /* ---- projects ---- */
+  activeProjectId:null,
+  projectSubmitIdentity:{name:'', cls:'', number:''},
+  projectIdentityError:'',
+  submittingFile:null,
+  projectGradeLookupId:null,
+  projectGradeLookupIdentity:{name:'', cls:'', number:''},
+  projectGradeLookupError:'',
+  projectResultSubmissionId:null
 };
 
 function setState(patch){
@@ -396,6 +420,12 @@ function subjectMaterials(subjectId){
 function subjectTests(subjectId){
   return Object.entries(DATA.tests).filter(([id,t])=>t.subjectId===subjectId).map(([id,t])=>Object.assign({id},t));
 }
+function subjectProjects(subjectId){
+  return Object.entries(DATA.projects).filter(([id,p])=>p.subjectId===subjectId).map(([id,p])=>Object.assign({id},p)).sort((a,b)=>a.createdAt-b.createdAt);
+}
+function projectSubmissionsFor(projectId){
+  return Object.entries(DATA.projectSubmissions).filter(([id,s])=>s.projectId===projectId).map(([id,s])=>Object.assign({id},s)).sort((a,b)=>b.submittedAt-a.submittedAt);
+}
 function sessionClassrooms(){
   return state.studentSessionClassroomIds.map(id=>Object.assign({id}, DATA.classrooms[id])).filter(c=>c.name);
 }
@@ -423,6 +453,23 @@ function answerPreview(q, ans){
   if(q.type==='order') return (ans && ans.length) ? ans.map(ii=>q.items[ii]).join(' → ') : '(no answer)';
   if(q.type==='numeric') return (ans!==undefined && ans!==null && String(ans).trim()!=='') ? String(ans) : '(no answer)';
   return '';
+}
+function formatFileSize(bytes){
+  if(bytes==null) return '';
+  if(bytes < 1024) return bytes + ' B';
+  if(bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/(1024*1024)).toFixed(2) + ' MB';
+}
+function formatDueDate(dateStr){
+  if(!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  if(isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
+}
+function isPastDue(dateStr){
+  if(!dateStr) return false;
+  const d = new Date(dateStr + 'T23:59:59');
+  return !isNaN(d.getTime()) && Date.now() > d.getTime();
 }
 
 /* =========================================================
@@ -497,6 +544,12 @@ async function deleteClassroom(id){
     delete DATA.subjects[sid];
     Object.keys(DATA.materials).forEach(mid=>{ if(DATA.materials[mid].subjectId===sid) delete DATA.materials[mid]; });
     Object.keys(DATA.tests).forEach(tid=>{ if(DATA.tests[tid].subjectId===sid) delete DATA.tests[tid]; });
+    Object.keys(DATA.projects).forEach(pid=>{
+      if(DATA.projects[pid].subjectId===sid){
+        Object.keys(DATA.projectSubmissions).forEach(sub=>{ if(DATA.projectSubmissions[sub].projectId===pid) delete DATA.projectSubmissions[sub]; });
+        delete DATA.projects[pid];
+      }
+    });
   });
   await saveData();
   setState({view:'teacher-dashboard'});
@@ -522,6 +575,12 @@ async function deleteSubject(id){
   delete DATA.subjects[id];
   Object.keys(DATA.materials).forEach(mid=>{ if(DATA.materials[mid].subjectId===id) delete DATA.materials[mid]; });
   Object.keys(DATA.tests).forEach(tid=>{ if(DATA.tests[tid].subjectId===id) delete DATA.tests[tid]; });
+  Object.keys(DATA.projects).forEach(pid=>{
+    if(DATA.projects[pid].subjectId===id){
+      Object.keys(DATA.projectSubmissions).forEach(sub=>{ if(DATA.projectSubmissions[sub].projectId===pid) delete DATA.projectSubmissions[sub]; });
+      delete DATA.projects[pid];
+    }
+  });
   await saveData();
   setState({view:'classroom-detail'});
 }
@@ -620,6 +679,55 @@ async function deleteTest(id){
 
 function viewTestResults(testId){
   setState({view:'teacher-results', resultsTestId:testId});
+}
+
+/* =========================================================
+   TEACHER — PROJECT ACTIONS
+   ========================================================= */
+async function createProject(){
+  const titleEl = document.getElementById('project-title');
+  const descEl = document.getElementById('project-desc');
+  const dueEl = document.getElementById('project-due');
+  const title = titleEl.value.trim();
+  const description = descEl.value.trim();
+  const dueDate = dueEl.value;
+  if(!title){ toast('Give the project a title'); return; }
+  const id = uid('proj');
+  DATA.projects[id] = { subjectId: state.activeSubjectId, title, description, dueDate, createdAt: Date.now() };
+  await saveData();
+  titleEl.value=''; descEl.value=''; dueEl.value='';
+  render();
+  toast('Project created');
+}
+
+async function deleteProject(id){
+  delete DATA.projects[id];
+  Object.keys(DATA.projectSubmissions).forEach(sid=>{ if(DATA.projectSubmissions[sid].projectId===id) delete DATA.projectSubmissions[sid]; });
+  await saveData();
+  render();
+}
+
+function openProjectSubmissions(id){
+  setState({view:'project-submissions', activeProjectId:id});
+}
+
+async function saveProjectGrade(subId){
+  const gradeEl = document.getElementById('grade-input-'+subId);
+  const feedbackEl = document.getElementById('feedback-input-'+subId);
+  const raw = gradeEl.value.trim();
+  let grade = null;
+  if(raw!==''){
+    grade = parseFloat(raw);
+    if(isNaN(grade) || grade<0 || grade>100){ toast('Grade must be a number between 0 and 100'); return; }
+  }
+  const sub = DATA.projectSubmissions[subId];
+  if(!sub) return;
+  sub.grade = grade;
+  sub.feedback = feedbackEl.value.trim();
+  sub.gradedAt = Date.now();
+  await saveData();
+  render();
+  toast('Grade saved');
 }
 
 /* =========================================================
@@ -802,7 +910,7 @@ async function gradeLongAnswer(subId, qIndex, isCorrect){
 }
 
 /* =========================================================
-   STUDENT — GRADE LOOKUP (check a past result by identity)
+   STUDENT — GRADE LOOKUP (check a past test result by identity)
    ========================================================= */
 function openGradeLookup(testId){
   setState({view:'grade-lookup', gradeLookupTestId:testId,
@@ -829,6 +937,90 @@ function submitGradeLookup(){
 }
 
 /* =========================================================
+   STUDENT — PROJECT SUBMISSION + GRADE LOOKUP
+   ========================================================= */
+function beginProjectSubmission(projectId){
+  setState({view:'project-submit-identify', activeProjectId:projectId,
+    projectSubmitIdentity:{name:'', cls:'', number:''}, projectIdentityError:'', submittingFile:null});
+}
+
+function startIdentifiedProjectSubmission(){
+  const name = document.getElementById('proj-ident-name').value.trim();
+  const cls = document.getElementById('proj-ident-class').value.trim();
+  const number = document.getElementById('proj-ident-number').value.trim();
+  if(!name || !cls || !number){
+    setState({projectIdentityError:'Fill in your name, class, and number to continue.'}); return;
+  }
+  setState({view:'project-submit', projectSubmitIdentity:{name, cls, number}, projectIdentityError:'', submittingFile:null});
+}
+
+function handleProjectFileChange(inputEl){
+  const file = inputEl.files && inputEl.files[0];
+  if(!file) return;
+  if(file.size > MAX_PROJECT_FILE_BYTES){
+    toast('That file is too big — please choose one under 4MB');
+    inputEl.value='';
+    setState({submittingFile:null});
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(){
+    setState({submittingFile:{name:file.name, size:file.size, dataUrl:reader.result}});
+  };
+  reader.onerror = function(){
+    toast('Could not read that file — please try again');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function submitProject(){
+  if(!state.submittingFile){ toast('Choose a file to submit first'); return; }
+  const noteEl = document.getElementById('project-note');
+  const note = noteEl ? noteEl.value.trim() : '';
+  const id = uid('psub');
+  DATA.projectSubmissions[id] = {
+    projectId: state.activeProjectId,
+    studentName: state.projectSubmitIdentity.name,
+    studentClass: state.projectSubmitIdentity.cls,
+    studentNumber: state.projectSubmitIdentity.number,
+    fileName: state.submittingFile.name,
+    fileSize: state.submittingFile.size,
+    fileData: state.submittingFile.dataUrl,
+    note,
+    submittedAt: Date.now(),
+    grade: null,
+    feedback: '',
+    gradedAt: null
+  };
+  await saveData();
+  setState({view:'project-submitted-notice', projectResultSubmissionId:id, submittingFile:null});
+}
+
+function openProjectGradeLookup(projectId){
+  setState({view:'project-grade-lookup', projectGradeLookupId:projectId,
+    projectGradeLookupIdentity:{name:'', cls:'', number:''}, projectGradeLookupError:''});
+}
+
+function submitProjectGradeLookup(){
+  const name = document.getElementById('proj-lookup-name').value.trim();
+  const cls = document.getElementById('proj-lookup-class').value.trim();
+  const number = document.getElementById('proj-lookup-number').value.trim();
+  if(!name || !cls || !number){
+    setState({projectGradeLookupError:'Fill in your name, class, and number to see your grade.'}); return;
+  }
+  const matches = projectSubmissionsFor(state.projectGradeLookupId).filter(s=>
+    s.studentName.trim().toLowerCase()===name.toLowerCase() &&
+    s.studentClass.trim().toLowerCase()===cls.toLowerCase() &&
+    s.studentNumber.trim().toLowerCase()===number.toLowerCase()
+  );
+  if(matches.length===0){
+    setState({projectGradeLookupError:"We couldn't find a submission with that name, class, and number for this project."});
+    return;
+  }
+  setState({view:'project-result', projectResultSubmissionId:matches[0].id});
+}
+
+/* =========================================================
    RENDER
    ========================================================= */
 function render(){
@@ -848,6 +1040,12 @@ function render(){
   else if(state.view==='test-submitted-notice') body = renderTestSubmittedNotice();
   else if(state.view==='test-result') body = renderTestResult();
   else if(state.view==='grade-lookup') body = renderGradeLookup();
+  else if(state.view==='project-submissions') body = renderProjectSubmissions();
+  else if(state.view==='project-submit-identify') body = renderProjectSubmitIdentify();
+  else if(state.view==='project-submit') body = renderProjectSubmit();
+  else if(state.view==='project-submitted-notice') body = renderProjectSubmittedNotice();
+  else if(state.view==='project-grade-lookup') body = renderProjectGradeLookup();
+  else if(state.view==='project-result') body = renderProjectResult();
   else body = renderLanding();
 
   app.innerHTML = topbarHtml() + '<main>' + body + '</main>' + renderConfirmDialog();
@@ -889,13 +1087,13 @@ function renderLanding(){
   return `
   <div class="landing-hero">
     <h1>Run your classroom<br>without the paperwork.</h1>
-    <p>Set up classes, drop in subjects, share materials, and write tests with multiple choice, multi-select, true/false, matching, ordering, numeric, short answer, and long answer questions — with shuffle, time limits, retake controls, and manual grading.</p>
+    <p>Set up classes, drop in subjects, share materials, write tests, and assign projects with due dates — all gradable, with grades your students can look up themselves.</p>
   </div>
   <div class="portal-choice">
     <div class="portal-card">
       <div class="icon">🧑‍🏫</div>
       <h3>I'm a teacher</h3>
-      <p>Create classes, add subjects, share materials, and build tests.</p>
+      <p>Create classes, add subjects, share materials, build tests, and assign projects.</p>
       <button class="btn btn-primary btn-full" onclick="enterTeacherPortal()">Continue as teacher</button>
     </div>
     <div class="portal-card">
@@ -966,11 +1164,12 @@ function renderClassroomDetail(){
     ${subjects.map(s=>{
       const matCount = subjectMaterials(s.id).length;
       const testCount = subjectTests(s.id).length;
+      const projCount = subjectProjects(s.id).length;
       return `
       <div class="tile clickable" onclick="openSubject('${s.id}')">
         <div class="subject-icon">📚</div>
         <h3>${esc(s.name)}</h3>
-        <div class="meta">${matCount} material${matCount===1?'':'s'} · ${testCount} test${testCount===1?'':'s'}</div>
+        <div class="meta">${matCount} material${matCount===1?'':'s'} · ${testCount} test${testCount===1?'':'s'} · ${projCount} project${projCount===1?'':'s'}</div>
       </div>`;
     }).join('')}
   </div>`}`;
@@ -983,6 +1182,7 @@ function renderSubjectDetail(){
   const tab = state.activeSubjectTab;
   const materials = subjectMaterials(s.id);
   const tests = subjectTests(s.id);
+  const projects = subjectProjects(s.id);
   return `
   <div class="crumbs">
     <button onclick="setState({view:'teacher-dashboard'})">Your classes</button>
@@ -998,6 +1198,7 @@ function renderSubjectDetail(){
   <div class="tabs">
     <button class="${tab==='materials'?'active':''}" onclick="setState({activeSubjectTab:'materials'})">Materials (${materials.length})</button>
     <button class="${tab==='tests'?'active':''}" onclick="setState({activeSubjectTab:'tests'})">Tests (${tests.length})</button>
+    <button class="${tab==='projects'?'active':''}" onclick="setState({activeSubjectTab:'projects'})">Projects (${projects.length})</button>
   </div>
   ${tab==='materials' ? `
     <div class="card" style="margin-bottom:20px;max-width:480px;">
@@ -1035,7 +1236,7 @@ function renderSubjectDetail(){
         </div>`;
       }).join('')}
     </div>`}
-  ` : `
+  ` : tab==='tests' ? `
     <div style="margin-bottom:16px;">
       <button class="btn btn-primary" onclick="startTestBuilder('${s.id}')">+ New test</button>
     </div>
@@ -1051,6 +1252,38 @@ function renderSubjectDetail(){
           </div>
         </div>
       `).join('')}
+    </div>`}
+  ` : `
+    <div class="card" style="margin-bottom:20px;max-width:480px;">
+      <div class="field" style="margin-bottom:8px;"><label>Title</label>
+        <input id="project-title" type="text" placeholder="e.g. Science Fair Poster">
+      </div>
+      <div class="field" style="margin-bottom:8px;"><label>Description</label>
+        <textarea id="project-desc" rows="3" placeholder="What should students do for this project?"></textarea>
+      </div>
+      <div class="field" style="margin-bottom:10px;"><label>Due date</label>
+        <input id="project-due" type="date">
+      </div>
+      <button class="btn btn-primary" onclick="createProject()">Create project</button>
+    </div>
+    ${projects.length===0 ? `<div class="empty-state">No projects yet in ${esc(s.name)}.</div>` : `
+    <div class="grid">
+      ${projects.map(p=>{
+        const subs = projectSubmissionsFor(p.id);
+        const gradedCount = subs.filter(x=>x.grade!==null && x.grade!==undefined).length;
+        const overdue = isPastDue(p.dueDate);
+        return `
+        <div class="tile">
+          <h3>${esc(p.title)}</h3>
+          ${p.description ? `<div class="meta" style="margin-bottom:6px;">${esc(p.description)}</div>` : ''}
+          ${p.dueDate ? `<span class="due-pill ${overdue?'overdue':''}">Due ${esc(formatDueDate(p.dueDate))}</span>` : ''}
+          <div class="meta" style="margin-top:8px;">${subs.length} submission${subs.length===1?'':'s'} · ${gradedCount} graded</div>
+          <div class="tile-actions">
+            <button class="btn btn-outline btn-sm" onclick="openProjectSubmissions('${p.id}')">Submissions</button>
+            <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this project?', ()=>deleteProject('${p.id}'))">Delete</button>
+          </div>
+        </div>`;
+      }).join('')}
     </div>`}
   `}`;
 }
@@ -1275,6 +1508,50 @@ function renderTeacherResults(){
   `;
 }
 
+/* =========================================================
+   TEACHER — PROJECT SUBMISSIONS / GRADING VIEW
+   ========================================================= */
+function renderProjectSubmissions(){
+  const p = Object.assign({id:state.activeProjectId}, DATA.projects[state.activeProjectId]);
+  if(!p.title) return `<p>Project not found.</p>`;
+  const subs = projectSubmissionsFor(p.id);
+  return `
+  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:'${p.subjectId}', activeSubjectTab:'projects'})">← Back to subject</button>
+  <div class="page-head"><h1>${esc(p.title)}</h1></div>
+  ${p.description ? `<p class="meta" style="margin-top:-14px;">${esc(p.description)}</p>` : ''}
+  ${p.dueDate ? `<div style="margin-bottom:18px;"><span class="due-pill ${isPastDue(p.dueDate)?'overdue':''}">Due ${esc(formatDueDate(p.dueDate))}</span></div>` : ''}
+  ${subs.length===0 ? `<div class="empty-state">No submissions yet.</div>` : subs.map(s=>`
+    <div class="submission-card">
+      <div class="list-row" style="align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;">${esc(s.studentName)} · ${esc(s.studentClass)} · No. ${esc(s.studentNumber)}</div>
+          <div class="meta" style="margin-top:2px;">Submitted ${new Date(s.submittedAt).toLocaleString()}</div>
+          ${s.note ? `<div class="mdesc" style="margin-top:8px;">${esc(s.note)}</div>` : ''}
+        </div>
+        <a href="${s.fileData}" download="${esc(s.fileName)}"><button class="btn btn-outline btn-sm">⬇ ${esc(s.fileName)}</button></a>
+      </div>
+      <div class="dot-rule"></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="field" style="margin-bottom:0;max-width:130px;">
+          <label>Grade (0–100)</label>
+          <input type="number" min="0" max="100" step="any" id="grade-input-${s.id}" value="${s.grade!==null && s.grade!==undefined ? s.grade : ''}">
+        </div>
+        <div class="field" style="margin-bottom:0;flex:1;min-width:200px;">
+          <label>Feedback</label>
+          <input type="text" id="feedback-input-${s.id}" placeholder="Optional comment for the student" value="${esc(s.feedback||'')}">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveProjectGrade('${s.id}')">Save grade</button>
+      </div>
+      <div style="margin-top:10px;">
+        ${s.grade!==null && s.grade!==undefined
+          ? `<span class="grade-badge">Graded: ${s.grade}/100</span>`
+          : `<span class="grade-badge pending">Not graded yet</span>`}
+      </div>
+    </div>
+  `).join('')}
+  `;
+}
+
 function renderStudentDashboard(){
   const classes = sessionClassrooms();
   return `
@@ -1320,11 +1597,12 @@ function renderStudentClassroom(){
     ${subjects.map(s=>{
       const matCount = subjectMaterials(s.id).length;
       const testCount = subjectTests(s.id).length;
+      const projCount = subjectProjects(s.id).length;
       return `
       <div class="tile clickable" onclick="openStudentSubject('${s.id}')">
         <div class="subject-icon">📚</div>
         <h3>${esc(s.name)}</h3>
-        <div class="meta">${matCount} material${matCount===1?'':'s'} · ${testCount} test${testCount===1?'':'s'}</div>
+        <div class="meta">${matCount} material${matCount===1?'':'s'} · ${testCount} test${testCount===1?'':'s'} · ${projCount} project${projCount===1?'':'s'}</div>
       </div>`;
     }).join('')}
   </div>`}`;
@@ -1336,6 +1614,7 @@ function renderStudentSubject(){
   const c = DATA.classrooms[s.classroomId];
   const materials = subjectMaterials(s.id);
   const tests = subjectTests(s.id);
+  const projects = subjectProjects(s.id);
   return `
   <div class="crumbs">
     <button onclick="setState({view:'student-dashboard'})">Your classes</button>
@@ -1367,7 +1646,7 @@ function renderStudentSubject(){
 
   <h3 style="margin:0 0 10px;font-size:16px;">Tests</h3>
   ${tests.length===0 ? `<div class="empty-state" style="padding:24px;">No tests assigned yet.</div>` : `
-  <div class="grid">
+  <div class="grid" style="margin-bottom:26px;">
     ${tests.map(t=>`
       <div class="tile">
         <h3>${esc(t.title)}</h3>
@@ -1377,6 +1656,24 @@ function renderStudentSubject(){
           <button class="btn btn-outline btn-sm" onclick="openGradeLookup('${t.id}')">See grade</button>
         </div>
       </div>`).join('')}
+  </div>`}
+
+  <h3 style="margin:0 0 10px;font-size:16px;">Projects</h3>
+  ${projects.length===0 ? `<div class="empty-state" style="padding:24px;">No projects assigned yet.</div>` : `
+  <div class="grid">
+    ${projects.map(p=>{
+      const overdue = isPastDue(p.dueDate);
+      return `
+      <div class="tile">
+        <h3>${esc(p.title)}</h3>
+        ${p.description ? `<div class="meta" style="margin-bottom:6px;">${esc(p.description)}</div>` : ''}
+        ${p.dueDate ? `<span class="due-pill ${overdue?'overdue':''}">Due ${esc(formatDueDate(p.dueDate))}</span>` : ''}
+        <div class="tile-actions">
+          <button class="btn btn-blue btn-sm" onclick="beginProjectSubmission('${p.id}')">Submit project</button>
+          <button class="btn btn-outline btn-sm" onclick="openProjectGradeLookup('${p.id}')">See grade</button>
+        </div>
+      </div>`;
+    }).join('')}
   </div>`}`;
 }
 
@@ -1414,6 +1711,110 @@ function renderGradeLookup(){
       <button class="btn btn-blue btn-full" onclick="submitGradeLookup()">See my grade</button>
     </div>
   </div>`;
+}
+
+/* =========================================================
+   STUDENT — PROJECT VIEWS
+   ========================================================= */
+function renderProjectSubmitIdentify(){
+  const p = DATA.projects[state.activeProjectId];
+  if(!p) return `<p>Project not found.</p>`;
+  return `
+  <button class="back-link" onclick="setState({view:'student-subject'})">← Cancel</button>
+  <div class="auth-wrap">
+    <div class="card">
+      <h2>${esc(p.title)}</h2>
+      ${p.description ? `<p class="meta" style="margin-top:-6px;">${esc(p.description)}</p>` : ''}
+      ${p.dueDate ? `<div style="margin-bottom:14px;"><span class="due-pill ${isPastDue(p.dueDate)?'overdue':''}">Due ${esc(formatDueDate(p.dueDate))}</span></div>` : ''}
+      <p class="meta" style="margin-top:0;">Tell us who you are before you submit.</p>
+      ${state.projectIdentityError ? `<div class="error-msg">${esc(state.projectIdentityError)}</div>` : ''}
+      <div class="field"><label>Name</label><input id="proj-ident-name" type="text" placeholder="Full name" value="${esc(state.projectSubmitIdentity.name)}"></div>
+      <div class="field"><label>Class</label><input id="proj-ident-class" type="text" placeholder="e.g. 7A" value="${esc(state.projectSubmitIdentity.cls)}"></div>
+      <div class="field"><label>Number</label><input id="proj-ident-number" type="text" placeholder="e.g. 12" value="${esc(state.projectSubmitIdentity.number)}"></div>
+      <button class="btn btn-blue btn-full" onclick="startIdentifiedProjectSubmission()">Continue</button>
+    </div>
+  </div>`;
+}
+
+function renderProjectSubmit(){
+  const p = DATA.projects[state.activeProjectId];
+  if(!p) return `<p>Project not found.</p>`;
+  const f = state.submittingFile;
+  return `
+  <button class="back-link" onclick="setState({view:'student-subject'})">← Cancel</button>
+  <div class="auth-wrap">
+    <div class="card">
+      <h2>${esc(p.title)}</h2>
+      ${p.description ? `<p class="meta" style="margin-top:-6px;">${esc(p.description)}</p>` : ''}
+      ${p.dueDate ? `<div style="margin-bottom:14px;"><span class="due-pill ${isPastDue(p.dueDate)?'overdue':''}">Due ${esc(formatDueDate(p.dueDate))}</span></div>` : ''}
+      <div class="meta" style="margin-bottom:16px;">Submitting as ${esc(state.projectSubmitIdentity.name)} · ${esc(state.projectSubmitIdentity.cls)} · No. ${esc(state.projectSubmitIdentity.number)}</div>
+      <div class="field">
+        <label>Attach your file</label>
+        <input type="file" onchange="handleProjectFileChange(this)">
+      </div>
+      ${f ? `<div class="meta" style="margin:-8px 0 14px;">Selected: ${esc(f.name)} (${formatFileSize(f.size)})</div>` : `<div class="meta" style="margin:-8px 0 14px;">Max file size 4MB.</div>`}
+      <div class="field">
+        <label>Note (optional)</label>
+        <textarea id="project-note" rows="3" placeholder="Anything you want your teacher to know"></textarea>
+      </div>
+      <button class="btn btn-blue btn-full" ${f?'':'disabled'} onclick="submitProject()">Submit project</button>
+    </div>
+  </div>`;
+}
+
+function renderProjectSubmittedNotice(){
+  return `
+  <div class="auth-wrap">
+    <div class="card" style="text-align:center;">
+      <h2>Project submitted ✅</h2>
+      <p class="meta">Your file has been recorded. Your teacher will grade it and you can check back for your grade.</p>
+      <button class="btn btn-primary btn-full" onclick="setState({view:'student-subject'})">Back to subject</button>
+    </div>
+  </div>`;
+}
+
+function renderProjectGradeLookup(){
+  const p = DATA.projects[state.projectGradeLookupId];
+  if(!p) return `<p>Project not found.</p>`;
+  return `
+  <button class="back-link" onclick="setState({view:'student-subject'})">← Cancel</button>
+  <div class="auth-wrap">
+    <div class="card">
+      <h2>${esc(p.title)}</h2>
+      <p class="meta" style="margin-top:-6px;">Enter your name, class, and number to see your grade.</p>
+      ${state.projectGradeLookupError ? `<div class="error-msg">${esc(state.projectGradeLookupError)}</div>` : ''}
+      <div class="field"><label>Name</label><input id="proj-lookup-name" type="text" placeholder="Full name" value="${esc(state.projectGradeLookupIdentity.name)}"></div>
+      <div class="field"><label>Class</label><input id="proj-lookup-class" type="text" placeholder="e.g. 7A" value="${esc(state.projectGradeLookupIdentity.cls)}"></div>
+      <div class="field"><label>Number</label><input id="proj-lookup-number" type="text" placeholder="e.g. 12" value="${esc(state.projectGradeLookupIdentity.number)}"></div>
+      <button class="btn btn-blue btn-full" onclick="submitProjectGradeLookup()">See my grade</button>
+    </div>
+  </div>`;
+}
+
+function renderProjectResult(){
+  const sub = DATA.projectSubmissions[state.projectResultSubmissionId];
+  if(!sub) return `<p>Result not found.</p>`;
+  const p = DATA.projects[sub.projectId];
+  const backView = state.role==='teacher' ? 'project-submissions' : 'student-subject';
+  const graded = sub.grade!==null && sub.grade!==undefined;
+  return `
+  <button class="back-link" onclick="setState({view:'${backView}', activeProjectId:'${sub.projectId}'})">← Back</button>
+  <div class="page-head"><h1>${esc(p?p.title:'Project')}</h1></div>
+  ${p && p.description ? `<p class="meta" style="margin-top:-14px;">${esc(p.description)}</p>` : ''}
+  <div class="meta" style="margin:0 0 18px;">${esc(sub.studentName)} · ${esc(sub.studentClass)} · No. ${esc(sub.studentNumber)}</div>
+  <div class="score-hero">
+    ${graded
+      ? `<div class="num">${sub.grade}<span>/100</span></div><div class="meta" style="margin-top:6px;">Graded ${sub.gradedAt ? new Date(sub.gradedAt).toLocaleDateString() : ''}</div>`
+      : `<div class="display" style="font-size:20px;">Awaiting grading</div><div class="meta" style="margin-top:6px;">Your teacher hasn't graded this submission yet.</div>`}
+  </div>
+  <div class="card">
+    <div style="font-weight:600;font-size:14.5px;">Submitted file</div>
+    <div class="meta" style="margin:4px 0 12px;">${esc(sub.fileName)} (${formatFileSize(sub.fileSize)}) · ${new Date(sub.submittedAt).toLocaleString()}</div>
+    <a href="${sub.fileData}" download="${esc(sub.fileName)}"><button class="btn btn-outline btn-sm">Download file</button></a>
+    ${sub.note ? `<div class="dot-rule"></div><div style="font-weight:600;font-size:13.5px;margin-bottom:4px;">Your note</div><div class="mdesc">${esc(sub.note)}</div>` : ''}
+    ${sub.feedback ? `<div class="dot-rule"></div><div style="font-weight:600;font-size:13.5px;margin-bottom:4px;">Teacher feedback</div><div class="mdesc">${esc(sub.feedback)}</div>` : ''}
+  </div>
+  `;
 }
 
 function renderTakeTest(){
