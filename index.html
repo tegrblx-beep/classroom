@@ -278,26 +278,89 @@
 const DATA_KEY = 'chalkline-data-v3';
 let DATA = null;
 
+/* ---- IndexedDB storage layer ----
+   localStorage caps out around 5-10MB total per site, which was too
+   tight once files/photos got attached. IndexedDB scales with disk
+   space instead (typically hundreds of MB to a few GB), so we use it
+   as the primary store. Any data saved under the old localStorage
+   key is migrated in automatically the first time this loads, and if
+   IndexedDB is ever unavailable we fall back to localStorage so the
+   app still works. */
+const IDB_NAME = 'chalkline-db';
+const IDB_STORE = 'kv';
+let idbPromise = null;
+
+function openIdb(){
+  if(idbPromise) return idbPromise;
+  idbPromise = new Promise((resolve, reject)=>{
+    if(!window.indexedDB){ reject(new Error('IndexedDB not available')); return; }
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = function(e){
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = function(e){ resolve(e.target.result); };
+    req.onerror = function(e){ reject(e.target.error || new Error('IndexedDB open failed')); };
+  });
+  return idbPromise;
+}
+function idbGet(key){
+  return openIdb().then(db=>new Promise((resolve, reject)=>{
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  }));
+}
+function idbSet(key, value){
+  return openIdb().then(db=>new Promise((resolve, reject)=>{
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const req = tx.objectStore(IDB_STORE).put(value, key);
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  }));
+}
+
 function blankData(){
   return { classrooms:{}, subjects:{}, materials:{}, tests:{}, submissions:{}, projects:{}, projectSubmissions:{} };
 }
 
 async function loadData(){
+  let stored = null;
   try{
-    const raw = localStorage.getItem(DATA_KEY);
-    DATA = raw ? JSON.parse(raw) : blankData();
+    stored = await idbGet(DATA_KEY);
+    if(!stored){
+      // one-time migration from the old localStorage-based version
+      try{
+        const raw = localStorage.getItem(DATA_KEY);
+        if(raw){
+          stored = JSON.parse(raw);
+          await idbSet(DATA_KEY, stored);
+          localStorage.removeItem(DATA_KEY);
+        }
+      }catch(e){ /* no legacy data to migrate, ignore */ }
+    }
   }catch(e){
-    DATA = blankData();
+    // IndexedDB unavailable — fall back to localStorage
+    try{
+      const raw = localStorage.getItem(DATA_KEY);
+      stored = raw ? JSON.parse(raw) : null;
+    }catch(e2){ /* ignore, fall through to blank */ }
   }
+  DATA = stored || blankData();
   const b = blankData();
   Object.keys(b).forEach(k=>{ if(!DATA[k]) DATA[k]=b[k]; });
 }
 
 async function saveData(){
   try{
-    localStorage.setItem(DATA_KEY, JSON.stringify(DATA));
+    await idbSet(DATA_KEY, DATA);
   }catch(e){
-    toast('Could not save — the file you attached may be too large for storage');
+    try{
+      localStorage.setItem(DATA_KEY, JSON.stringify(DATA));
+    }catch(e2){
+      toast('Could not save — your browser storage may be full');
+    }
   }
 }
 
@@ -319,8 +382,8 @@ const MATERIAL_TYPES = [
   {id:'link', label:'Link', icon:'🔗'}
 ];
 
-const MAX_PROJECT_FILE_BYTES = 4 * 1024 * 1024; // 4MB — localStorage has limited space
-const MAX_MATERIAL_FILE_BYTES = 4 * 1024 * 1024; // 4MB — localStorage has limited space
+const MAX_PROJECT_FILE_BYTES = 50 * 1024 * 1024; // 50MB — IndexedDB has far more headroom than localStorage
+const MAX_MATERIAL_FILE_BYTES = 50 * 1024 * 1024; // 50MB — IndexedDB has far more headroom than localStorage
 
 /* =========================================================
    APP STATE
@@ -597,7 +660,7 @@ function handleMaterialFileChange(inputEl){
   const file = inputEl.files && inputEl.files[0];
   if(!file) return;
   if(file.size > MAX_MATERIAL_FILE_BYTES){
-    toast('That file is too big — please choose one under 4MB');
+    toast('That file is too big — please choose one under 50MB');
     inputEl.value='';
     setState({newMaterialFile:null});
     return;
@@ -992,7 +1055,7 @@ function handleProjectFileChange(inputEl){
   const file = inputEl.files && inputEl.files[0];
   if(!file) return;
   if(file.size > MAX_PROJECT_FILE_BYTES){
-    toast('That file is too big — please choose one under 4MB');
+    toast('That file is too big — please choose one under 50MB');
     inputEl.value='';
     setState({submittingFile:null});
     return;
@@ -1250,7 +1313,7 @@ function renderSubjectDetail(){
       <div class="field" style="margin-bottom:8px;"><label>Link (optional — Teams, Drive, YouTube, anywhere)</label>
         <input id="material-url" type="text" placeholder="https://...">
       </div>
-      <div class="field" style="margin-bottom:4px;"><label>Or attach a file (optional, max 4MB)</label>
+      <div class="field" style="margin-bottom:4px;"><label>Or attach a file (optional, max 50MB)</label>
         <input id="material-file" type="file" onchange="handleMaterialFileChange(this)">
       </div>
       ${state.newMaterialFile ? `<div class="meta" style="margin-bottom:10px;">Selected: ${esc(state.newMaterialFile.name)} (${formatFileSize(state.newMaterialFile.size)})</div>` : `<div class="meta" style="margin-bottom:10px;">Add a link, attach a file, or both.</div>`}
@@ -1792,7 +1855,7 @@ function renderProjectSubmit(){
         <label>Attach your file</label>
         <input type="file" onchange="handleProjectFileChange(this)">
       </div>
-      ${f ? `<div class="meta" style="margin:-8px 0 14px;">Selected: ${esc(f.name)} (${formatFileSize(f.size)})</div>` : `<div class="meta" style="margin:-8px 0 14px;">Max file size 4MB.</div>`}
+      ${f ? `<div class="meta" style="margin:-8px 0 14px;">Selected: ${esc(f.name)} (${formatFileSize(f.size)})</div>` : `<div class="meta" style="margin:-8px 0 14px;">Max file size 50MB.</div>`}
       <div class="field">
         <label>Note (optional)</label>
         <textarea id="project-note" rows="3" placeholder="Anything you want your teacher to know"></textarea>
