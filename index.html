@@ -21,6 +21,8 @@
     --marker-yellow-dim:#faf0dc;
     --marker-purple:#7A5FA3;
     --marker-purple-dim:#efe9f5;
+    --marker-teal:#2E8B84;
+    --marker-teal-dim:#e3f3f1;
     --muted:#818979;
     --line:#D8D2C0;
     --radius:10px;
@@ -160,18 +162,23 @@
   .qcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:14px;position:relative;}
   .qcard .qtype-badge{
     font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
-    padding:3px 8px;border-radius:6px;display:inline-block;margin-bottom:10px;
+    padding:3px 8px;border-radius:6px;display:inline-block;margin-bottom:10px;margin-right:6px;
   }
   .qtype-badge.mcq{background:var(--marker-blue-dim);color:var(--marker-blue);}
   .qtype-badge.tf{background:var(--marker-yellow-dim);color:#8a6412;}
   .qtype-badge.match{background:var(--marker-red-dim);color:var(--marker-red);}
   .qtype-badge.short{background:var(--marker-purple-dim);color:var(--marker-purple);}
   .qtype-badge.long{background:var(--paper-dim);color:var(--muted);}
+  .qtype-badge.msq{background:var(--marker-teal-dim);color:var(--marker-teal);}
+  .qtype-badge.order{background:var(--marker-red-dim);color:var(--marker-red);}
+  .qtype-badge.numeric{background:var(--marker-purple-dim);color:var(--marker-purple);}
+  .qtype-badge.manual{background:var(--marker-yellow-dim);color:#8a6412;}
   .qcard .remove-q{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:13px;}
   .qcard .remove-q:hover{color:var(--marker-red);}
   .opt-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
   .opt-row input[type=text]{flex:1;}
   .add-q-bar{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0;}
+  .manual-grade-toggle{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);}
 
   .progress-track{display:flex;gap:5px;margin-bottom:24px;}
   .progress-track .seg{height:5px;flex:1;background:var(--line);border-radius:3px;}
@@ -183,6 +190,21 @@
   }
   .choice-row.selected{border-color:var(--marker-blue);background:var(--marker-blue-dim);}
   .choice-row:hover{cursor:pointer;border-color:var(--marker-blue);}
+
+  .order-item{
+    display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;
+    padding:11px 14px;margin-bottom:8px;background:#fff;
+  }
+  .order-item .order-idx{
+    font-family:'JetBrains Mono';font-weight:700;color:var(--muted);width:20px;flex-shrink:0;
+  }
+  .order-item .order-text{flex:1;}
+  .order-item .order-btns{display:flex;gap:4px;flex-shrink:0;}
+  .order-item .order-btns button{
+    border:1px solid var(--line);background:#fff;border-radius:6px;width:28px;height:28px;font-size:13px;
+  }
+  .order-item .order-btns button:disabled{opacity:.3;cursor:not-allowed;}
+  .order-item .order-btns button:hover:not(:disabled){border-color:var(--marker-blue);color:var(--marker-blue);}
 
   .match-wrap{position:relative;display:flex;justify-content:space-between;gap:60px;padding:10px 0;}
   .match-col{flex:1;display:flex;flex-direction:column;gap:10px;}
@@ -250,8 +272,8 @@ function blankData(){
 
 async function loadData(){
   try{
-    const res = await window.storage.get(DATA_KEY, true);
-    DATA = res ? JSON.parse(res.value) : blankData();
+    const raw = localStorage.getItem(DATA_KEY);
+    DATA = raw ? JSON.parse(raw) : blankData();
   }catch(e){
     DATA = blankData();
   }
@@ -261,7 +283,7 @@ async function loadData(){
 
 async function saveData(){
   try{
-    await window.storage.set(DATA_KEY, JSON.stringify(DATA), true);
+    localStorage.setItem(DATA_KEY, JSON.stringify(DATA));
   }catch(e){
     toast('Could not save — try again');
   }
@@ -393,6 +415,9 @@ function answerPreview(q, ans){
   if(q.type==='tf') return ans===true ? 'True' : ans===false ? 'False' : '(no answer)';
   if(q.type==='match') return (ans && ans.length) ? ans.map(p=>`${q.terms[p.left]} → ${q.defs[p.right]}`).join('; ') : '(no answer)';
   if(q.type==='short' || q.type==='long') return (ans && String(ans).trim()) ? ans : '(no answer)';
+  if(q.type==='msq') return (ans && ans.length) ? ans.map(oi=>q.options[oi]).join(', ') : '(no answer)';
+  if(q.type==='order') return (ans && ans.length) ? ans.map(ii=>q.items[ii]).join(' → ') : '(no answer)';
+  if(q.type==='numeric') return (ans!==undefined && ans!==null && String(ans).trim()!=='') ? String(ans) : '(no answer)';
   return '';
 }
 
@@ -524,10 +549,13 @@ function startTestBuilder(subjectId){
 
 function addBuilderQuestion(type){
   let q;
-  if(type==='mcq') q = {type:'mcq', text:'', options:['',''], correct:0};
-  else if(type==='tf') q = {type:'tf', text:'', correct:true};
+  if(type==='mcq') q = {type:'mcq', text:'', options:['',''], correct:0, manualGrade:false};
+  else if(type==='tf') q = {type:'tf', text:'', correct:true, manualGrade:false};
   else if(type==='match') q = {type:'match', text:'Match each term to its definition', terms:['',''], defs:['','']};
-  else if(type==='short') q = {type:'short', text:'', accepted:['']};
+  else if(type==='short') q = {type:'short', text:'', accepted:[''], manualGrade:false};
+  else if(type==='msq') q = {type:'msq', text:'', options:['','',''], correct:[0], manualGrade:false};
+  else if(type==='order') q = {type:'order', text:'', items:['','',''], manualGrade:false};
+  else if(type==='numeric') q = {type:'numeric', text:'', answer:0, tolerance:0, manualGrade:false};
   else q = {type:'long', text:'', modelAnswer:''};
   setState({builderQuestions:[...state.builderQuestions, q]});
 }
@@ -541,6 +569,14 @@ function updateBuilderQuestion(idx, patch){
   qs[idx] = Object.assign({}, qs[idx], patch);
   state.builderQuestions = qs;
 }
+function toggleMsqCorrect(idx, oi, checked){
+  const qs = state.builderQuestions;
+  const cur = qs[idx].correct.slice();
+  const pos = cur.indexOf(oi);
+  if(checked && pos===-1) cur.push(oi);
+  if(!checked && pos!==-1) cur.splice(pos,1);
+  qs[idx] = Object.assign({}, qs[idx], {correct:cur});
+}
 
 async function saveTest(){
   const title = document.getElementById('builder-title-input').value.trim();
@@ -551,6 +587,12 @@ async function saveTest(){
     if(q.type==='mcq' && q.options.some(o=>!o.trim())){ toast('Fill in every answer choice'); return; }
     if(q.type==='match' && (q.terms.some(t=>!t.trim()) || q.defs.some(d=>!d.trim()))){ toast('Fill in every term and definition'); return; }
     if(q.type==='short' && !(q.accepted||[]).some(a=>a.trim())){ toast('Give at least one accepted answer for each short-answer question'); return; }
+    if(q.type==='msq'){
+      if(q.options.some(o=>!o.trim())){ toast('Fill in every answer choice'); return; }
+      if(!q.correct || q.correct.length===0){ toast('Mark at least one correct choice for each multi-select question'); return; }
+    }
+    if(q.type==='order' && q.items.some(t=>!t.trim())){ toast('Fill in every item for each ordering question'); return; }
+    if(q.type==='numeric' && (q.answer===undefined || q.answer===null || isNaN(parseFloat(q.answer)))){ toast('Give a numeric answer for each numeric question'); return; }
   }
   const settings = {
     shuffle: !!document.getElementById('builder-shuffle').checked,
@@ -628,7 +670,13 @@ function startIdentifiedTest(){
   }
   const questions = settings.shuffle ? shuffleArray(t.questions) : t.questions.slice();
   const deadline = settings.timeLimitMin>0 ? Date.now()+settings.timeLimitMin*60000 : null;
-  setState({view:'take-test', takingAnswers:{}, takingPending:{}, takingIndex:0,
+  const initialAnswers = {};
+  questions.forEach((q, idx)=>{
+    if(q.type==='order'){
+      initialAnswers[idx] = shuffleArray(q.items.map((_,ii)=>ii));
+    }
+  });
+  setState({view:'take-test', takingAnswers:initialAnswers, takingPending:{}, takingIndex:0,
     takingIdentity:{name, cls, number}, identityError:'',
     takingQuestions:questions, takingDeadlineAt:deadline});
   if(deadline) startTestTimer();
@@ -649,6 +697,21 @@ function selectMcq(qIndex, optIndex){
 }
 function selectTf(qIndex, val){
   const a = Object.assign({}, state.takingAnswers, {[qIndex]:val});
+  setState({takingAnswers:a});
+}
+function toggleMsqAnswer(qIndex, optIndex){
+  const cur = (state.takingAnswers[qIndex] || []).slice();
+  const pos = cur.indexOf(optIndex);
+  if(pos===-1) cur.push(optIndex); else cur.splice(pos,1);
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:cur});
+  setState({takingAnswers:a});
+}
+function moveOrderItem(qIndex, pos, dir){
+  const cur = (state.takingAnswers[qIndex] || []).slice();
+  const newPos = pos + dir;
+  if(newPos<0 || newPos>=cur.length) return;
+  [cur[pos], cur[newPos]] = [cur[newPos], cur[pos]];
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:cur});
   setState({takingAnswers:a});
 }
 function matchClickLeft(qIndex, leftIdx){
@@ -679,16 +742,28 @@ async function submitTest(){
   questions.forEach((q, i)=>{
     const ans = state.takingAnswers[i];
     let correct = false;
-    if(q.type==='mcq') correct = ans===q.correct;
-    else if(q.type==='tf') correct = ans===q.correct;
-    else if(q.type==='match'){
+    if(q.type==='long' || q.manualGrade){
+      correct = null; // needs manual grading by the teacher
+    } else if(q.type==='mcq'){
+      correct = ans===q.correct;
+    } else if(q.type==='tf'){
+      correct = ans===q.correct;
+    } else if(q.type==='match'){
       const pairs = ans || [];
       correct = pairs.length===q.terms.length && pairs.every(p=>p.left===p.right);
     } else if(q.type==='short'){
       const accepted = (q.accepted||[]).map(a=>a.trim().toLowerCase()).filter(Boolean);
       correct = accepted.includes(String(ans||'').trim().toLowerCase());
-    } else if(q.type==='long'){
-      correct = null; // needs manual grading by the teacher
+    } else if(q.type==='msq'){
+      const given = (ans||[]).slice().sort((a,b)=>a-b);
+      const want = (q.correct||[]).slice().sort((a,b)=>a-b);
+      correct = given.length===want.length && given.every((v,idx)=>v===want[idx]);
+    } else if(q.type==='order'){
+      const identity = q.items.map((_,idx)=>idx);
+      correct = !!ans && ans.length===identity.length && ans.every((v,idx)=>v===identity[idx]);
+    } else if(q.type==='numeric'){
+      const val = parseFloat(ans);
+      correct = !isNaN(val) && Math.abs(val - parseFloat(q.answer)) <= (parseFloat(q.tolerance)||0);
     }
     if(correct===true) score++;
     detail.push({question:q, answer:ans, correct});
@@ -782,7 +857,7 @@ function renderLanding(){
   return `
   <div class="landing-hero">
     <h1>Run your classroom<br>without the paperwork.</h1>
-    <p>Set up classes, drop in subjects, share materials, and write tests with multiple choice, true/false, matching, short answer, and long answer questions — with shuffle, time limits, and retake controls.</p>
+    <p>Set up classes, drop in subjects, share materials, and write tests with multiple choice, multi-select, true/false, matching, ordering, numeric, short answer, and long answer questions — with shuffle, time limits, retake controls, and manual grading.</p>
   </div>
   <div class="portal-choice">
     <div class="portal-card">
@@ -981,8 +1056,11 @@ function renderTestBuilder(){
 
   <div class="add-q-bar">
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('mcq')">+ Multiple choice</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('msq')">+ Multi-select</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('tf')">+ True / False</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('match')">+ Matching (connect the line)</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('order')">+ Ordering / sequence</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('numeric')">+ Numeric answer</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('short')">+ Short answer</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('long')">+ Long answer</button>
   </div>
@@ -991,11 +1069,18 @@ function renderTestBuilder(){
   `;
 }
 
+function renderManualGradeToggle(idx, q){
+  return `
+  <div class="manual-grade-toggle">
+    <label class="settings-check"><input type="checkbox" ${q.manualGrade?'checked':''} onchange="updateBuilderQuestion(${idx},{manualGrade:this.checked})"> Require manual grading (don't auto-grade, review each answer yourself)</label>
+  </div>`;
+}
+
 function renderBuilderQuestion(q, idx){
   if(q.type==='mcq'){
     return `<div class="qcard">
       <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
-      <span class="qtype-badge mcq">Multiple choice</span>
+      <span class="qtype-badge mcq">Multiple choice</span>${q.manualGrade?'<span class="qtype-badge manual">Manual grade</span>':''}
       <div class="field"><label>Question ${idx+1}</label>
         <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
       </div>
@@ -1008,12 +1093,32 @@ function renderBuilderQuestion(q, idx){
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.push('');qs[${idx}]=Object.assign({},qs[${idx}],{options:o});render();})()">+ Add choice</button>
       <div class="meta" style="margin-top:8px;">Select the radio button next to the correct answer.</div>
+      ${renderManualGradeToggle(idx, q)}
+    </div>`;
+  }
+  if(q.type==='msq'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge msq">Multi-select</span>${q.manualGrade?'<span class="qtype-badge manual">Manual grade</span>':''}
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      ${q.options.map((opt,oi)=>`
+        <div class="opt-row">
+          <input type="checkbox" ${q.correct.includes(oi)?'checked':''} onchange="toggleMsqCorrect(${idx},${oi},this.checked)">
+          <input type="text" placeholder="Choice ${oi+1}" value="${esc(opt)}" oninput="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o[${oi}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{options:o});}).call(this)">
+          ${q.options.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.splice(${oi},1);const c=qs[${idx}].correct.filter(v=>v!==${oi}).map(v=>v>${oi}?v-1:v);qs[${idx}]=Object.assign({},qs[${idx}],{options:o,correct:c}); render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.push('');qs[${idx}]=Object.assign({},qs[${idx}],{options:o});render();})()">+ Add choice</button>
+      <div class="meta" style="margin-top:8px;">Check every correct choice — students must select all and only these to get it right.</div>
+      ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
   if(q.type==='tf'){
     return `<div class="qcard">
       <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
-      <span class="qtype-badge tf">True / False</span>
+      <span class="qtype-badge tf">True / False</span>${q.manualGrade?'<span class="qtype-badge manual">Manual grade</span>':''}
       <div class="field"><label>Question ${idx+1}</label>
         <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
       </div>
@@ -1021,12 +1126,32 @@ function renderBuilderQuestion(q, idx){
         <label style="display:flex;align-items:center;gap:6px;"><input type="radio" name="tf-${idx}" ${q.correct===true?'checked':''} onchange="updateBuilderQuestion(${idx},{correct:true})"> True</label>
         <label style="display:flex;align-items:center;gap:6px;margin-left:18px;"><input type="radio" name="tf-${idx}" ${q.correct===false?'checked':''} onchange="updateBuilderQuestion(${idx},{correct:false})"> False</label>
       </div>
+      ${renderManualGradeToggle(idx, q)}
+    </div>`;
+  }
+  if(q.type==='numeric'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge numeric">Numeric</span>${q.manualGrade?'<span class="qtype-badge manual">Manual grade</span>':''}
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="opt-row">
+        <div class="field" style="margin-bottom:0;flex:1;"><label>Correct answer</label>
+          <input type="number" step="any" value="${esc(q.answer)}" oninput="updateBuilderQuestion(${idx},{answer:this.value})">
+        </div>
+        <div class="field" style="margin-bottom:0;flex:1;"><label>Tolerance (± , optional)</label>
+          <input type="number" step="any" min="0" value="${esc(q.tolerance||0)}" oninput="updateBuilderQuestion(${idx},{tolerance:this.value})">
+        </div>
+      </div>
+      <div class="meta" style="margin-top:8px;">Graded automatically — accepts anything within the tolerance range.</div>
+      ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
   if(q.type==='short'){
     return `<div class="qcard">
       <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
-      <span class="qtype-badge short">Short answer</span>
+      <span class="qtype-badge short">Short answer</span>${q.manualGrade?'<span class="qtype-badge manual">Manual grade</span>':''}
       <div class="field"><label>Question ${idx+1}</label>
         <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
       </div>
@@ -1037,13 +1162,33 @@ function renderBuilderQuestion(q, idx){
         </div>
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const acc=qs[${idx}].accepted.slice();acc.push('');qs[${idx}]=Object.assign({},qs[${idx}],{accepted:acc});render();})()">+ Add alternate answer</button>
-      <div class="meta" style="margin-top:8px;">Graded automatically — matches any accepted answer, not case-sensitive.</div>
+      <div class="meta" style="margin-top:8px;">Graded automatically — matches any accepted answer, not case-sensitive. Turn on manual grading below if you'd rather review these yourself.</div>
+      ${renderManualGradeToggle(idx, q)}
+    </div>`;
+  }
+  if(q.type==='order'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge order">Ordering</span>${q.manualGrade?'<span class="qtype-badge manual">Manual grade</span>':''}
+      <div class="field"><label>Instructions</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="meta" style="margin-bottom:8px;">List the items in the correct order — students will see them shuffled and put them back in order.</div>
+      ${q.items.map((item,ii)=>`
+        <div class="opt-row">
+          <span class="mono" style="width:18px;color:var(--muted);">${ii+1}.</span>
+          <input type="text" placeholder="Item ${ii+1}" value="${esc(item)}" oninput="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it[${ii}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{items:it});}).call(this)">
+          ${q.items.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it.splice(${ii},1);qs[${idx}]=Object.assign({},qs[${idx}],{items:it});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it.push('');qs[${idx}]=Object.assign({},qs[${idx}],{items:it});render();})()">+ Add item</button>
+      ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
   if(q.type==='long'){
     return `<div class="qcard">
       <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
-      <span class="qtype-badge long">Long answer</span>
+      <span class="qtype-badge long">Long answer</span><span class="qtype-badge manual">Manual grade</span>
       <div class="field"><label>Question ${idx+1}</label>
         <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
       </div>
@@ -1234,11 +1379,38 @@ function renderTakeTest(){
         <span>${esc(opt)}</span>
       </div>
     `).join('');
+  } else if(q.type==='msq'){
+    const sel = state.takingAnswers[i] || [];
+    qBody = q.options.map((opt,oi)=>`
+      <div class="choice-row ${sel.includes(oi)?'selected':''}" onclick="toggleMsqAnswer(${i},${oi})">
+        <input type="checkbox" ${sel.includes(oi)?'checked':''} onclick="event.stopPropagation();toggleMsqAnswer(${i},${oi})">
+        <span>${esc(opt)}</span>
+      </div>
+    `).join('') + `<div class="meta">Select every choice that applies.</div>`;
   } else if(q.type==='tf'){
     qBody = `
       <div class="choice-row ${state.takingAnswers[i]===true?'selected':''}" onclick="selectTf(${i},true)">True</div>
       <div class="choice-row ${state.takingAnswers[i]===false?'selected':''}" onclick="selectTf(${i},false)">False</div>
     `;
+  } else if(q.type==='numeric'){
+    const val = state.takingAnswers[i]!==undefined ? state.takingAnswers[i] : '';
+    qBody = `
+      <div class="field">
+        <input type="number" step="any" placeholder="Type your answer" value="${esc(val)}"
+          oninput="updateTextAnswer(${i}, this.value)" onblur="render()">
+      </div>`;
+  } else if(q.type==='order'){
+    const order = state.takingAnswers[i] || q.items.map((_,ii)=>ii);
+    qBody = order.map((itemIdx,pos)=>`
+      <div class="order-item">
+        <span class="order-idx mono">${pos+1}</span>
+        <span class="order-text">${esc(q.items[itemIdx])}</span>
+        <div class="order-btns">
+          <button type="button" ${pos===0?'disabled':''} onclick="moveOrderItem(${i},${pos},-1)">↑</button>
+          <button type="button" ${pos===order.length-1?'disabled':''} onclick="moveOrderItem(${i},${pos},1)">↓</button>
+        </div>
+      </div>
+    `).join('') + `<div class="meta" style="margin-top:6px;">Use the arrows to arrange these in the correct order.</div>`;
   } else if(q.type==='match'){
     if(!state._shuffleCache) state._shuffleCache = {};
     const cacheKey = state.takingTestId+'-'+i;
@@ -1287,6 +1459,9 @@ function renderTakeTest(){
 
   let canSubmitQ;
   if(q.type==='match') canSubmitQ = (state.takingAnswers[i]||[]).length===q.terms.length;
+  else if(q.type==='order') canSubmitQ = true;
+  else if(q.type==='msq') canSubmitQ = (state.takingAnswers[i]||[]).length>0;
+  else if(q.type==='numeric') canSubmitQ = state.takingAnswers[i]!==undefined && String(state.takingAnswers[i]).trim()!=='' && !isNaN(parseFloat(state.takingAnswers[i]));
   else if(q.type==='short' || q.type==='long') canSubmitQ = !!(state.takingAnswers[i] && String(state.takingAnswers[i]).trim());
   else canSubmitQ = answered;
 
