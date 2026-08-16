@@ -163,7 +163,10 @@
     padding:3px 8px;border-radius:6px;display:inline-block;margin-bottom:10px;
   }
   .qtype-badge.mcq{background:var(--marker-blue-dim);color:var(--marker-blue);}
+  .qtype-badge.msq{background:var(--marker-blue-dim);color:var(--marker-blue);}
   .qtype-badge.tf{background:var(--marker-yellow-dim);color:#8a6412;}
+  .qtype-badge.order{background:var(--marker-yellow-dim);color:#8a6412;}
+  .qtype-badge.saq{background:var(--marker-purple-dim);color:var(--marker-purple);}
   .qtype-badge.match{background:var(--marker-red-dim);color:var(--marker-red);}
   .qcard .remove-q{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:13px;}
   .qcard .remove-q:hover{color:var(--marker-red);}
@@ -193,6 +196,13 @@
   .match-item.pending{border-color:var(--marker-yellow);background:var(--marker-yellow-dim);}
   .match-item.paired{border-color:var(--marker-blue);}
   .match-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+
+  .order-list{display:flex;flex-direction:column;gap:8px;}
+  .order-item{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:9px;padding:10px 14px;background:#fff;}
+  .order-pos{font-family:'JetBrains Mono';font-weight:700;color:var(--marker-blue);width:20px;flex-shrink:0;}
+  .order-label{flex:1;font-size:14px;}
+  .order-controls{display:flex;gap:6px;}
+  .order-controls button{padding:4px 10px;}
 
   .score-hero{text-align:center;padding:34px 20px;background:#fff;border:1px solid var(--line);border-radius:16px;margin-bottom:24px;}
   .score-hero .num{font-family:'Space Grotesk';font-size:52px;font-weight:700;color:var(--chalk-dark);}
@@ -471,8 +481,14 @@ function startTestBuilder(subjectId){
 function addBuilderQuestion(type){
   const q = type==='mcq'
     ? {type:'mcq', text:'', options:['',''], correct:0}
+    : type==='msq'
+    ? {type:'msq', text:'', options:['',''], correct:[]}
     : type==='tf'
     ? {type:'tf', text:'', correct:true}
+    : type==='saq'
+    ? {type:'saq', text:'', answers:['']}
+    : type==='order'
+    ? {type:'order', text:'', items:['','','']}
     : {type:'match', text:'Match each term to its definition', terms:['',''], defs:['','']};
   setState({builderQuestions:[...state.builderQuestions, q]});
 }
@@ -494,6 +510,9 @@ async function saveTest(){
   for(const q of state.builderQuestions){
     if(!q.text || !q.text.trim()){ toast('Every question needs its text filled in'); return; }
     if(q.type==='mcq' && q.options.some(o=>!o.trim())){ toast('Fill in every answer choice'); return; }
+    if(q.type==='msq' && (q.options.some(o=>!o.trim()) || q.correct.length===0)){ toast('Fill in every choice and mark at least one correct answer'); return; }
+    if(q.type==='saq' && q.answers.every(a=>!a.trim())){ toast('Add at least one accepted answer'); return; }
+    if(q.type==='order' && q.items.some(it=>!it.trim())){ toast('Fill in every item to order'); return; }
     if(q.type==='match' && (q.terms.some(t=>!t.trim()) || q.defs.some(d=>!d.trim()))){ toast('Fill in every term and definition'); return; }
   }
   const id = uid('test');
@@ -562,6 +581,23 @@ function selectTf(qIndex, val){
   const a = Object.assign({}, state.takingAnswers, {[qIndex]:val});
   setState({takingAnswers:a});
 }
+function toggleMsq(qIndex, optIndex){
+  const sel = (state.takingAnswers[qIndex] || []).slice();
+  const next = sel.includes(optIndex) ? sel.filter(x=>x!==optIndex) : [...sel, optIndex];
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:next});
+  setState({takingAnswers:a});
+}
+function setSaqAnswer(qIndex, val){
+  state.takingAnswers = Object.assign({}, state.takingAnswers, {[qIndex]:val});
+}
+function moveOrderItem(qIndex, pos, dir){
+  const seq = (state.takingAnswers[qIndex] || []).slice();
+  const newPos = pos + dir;
+  if(newPos<0 || newPos>=seq.length) return;
+  [seq[pos], seq[newPos]] = [seq[newPos], seq[pos]];
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:seq});
+  setState({takingAnswers:a});
+}
 function matchClickLeft(qIndex, leftIdx){
   const pend = Object.assign({}, state.takingPending, {[qIndex]:leftIdx});
   setState({takingPending:pend});
@@ -589,6 +625,19 @@ async function submitTest(){
     let correct = false;
     if(q.type==='mcq') correct = ans===q.correct;
     else if(q.type==='tf') correct = ans===q.correct;
+    else if(q.type==='msq'){
+      const sel = (ans||[]).slice().sort();
+      const want = (q.correct||[]).slice().sort();
+      correct = sel.length===want.length && sel.every((v,vi)=>v===want[vi]);
+    }
+    else if(q.type==='saq'){
+      const given = String(ans||'').trim().toLowerCase();
+      correct = given!=='' && (q.answers||[]).some(a=>a.trim().toLowerCase()===given);
+    }
+    else if(q.type==='order'){
+      const seq = ans || [];
+      correct = seq.length===q.items.length && seq.every((v,vi)=>v===vi);
+    }
     else if(q.type==='match'){
       const pairs = ans || [];
       correct = pairs.length===q.terms.length && pairs.every(p=>p.left===p.right);
@@ -850,7 +899,10 @@ function renderTestBuilder(){
 
   <div class="add-q-bar">
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('mcq')">+ Multiple choice</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('msq')">+ Multiple select</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('tf')">+ True / False</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('saq')">+ Short answer</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('order')">+ Ordering</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('match')">+ Matching (connect the line)</button>
   </div>
 
@@ -888,6 +940,59 @@ function renderBuilderQuestion(q, idx){
         <label style="display:flex;align-items:center;gap:6px;"><input type="radio" name="tf-${idx}" ${q.correct===true?'checked':''} onchange="updateBuilderQuestion(${idx},{correct:true})"> True</label>
         <label style="display:flex;align-items:center;gap:6px;margin-left:18px;"><input type="radio" name="tf-${idx}" ${q.correct===false?'checked':''} onchange="updateBuilderQuestion(${idx},{correct:false})"> False</label>
       </div>
+    </div>`;
+  }
+  if(q.type==='msq'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge msq">Multiple select</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      ${q.options.map((opt,oi)=>`
+        <div class="opt-row">
+          <input type="checkbox" ${q.correct.includes(oi)?'checked':''} onchange="(function(){const qs=state.builderQuestions;const c=qs[${idx}].correct.slice();const has=c.includes(${oi});const nc=has?c.filter(x=>x!==${oi}):[...c,${oi}];qs[${idx}]=Object.assign({},qs[${idx}],{correct:nc});}).call(this)">
+          <input type="text" placeholder="Choice ${oi+1}" value="${esc(opt)}" oninput="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o[${oi}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{options:o});}).call(this)">
+          ${q.options.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.splice(${oi},1);const c=qs[${idx}].correct.filter(x=>x!==${oi}).map(x=>x>${oi}?x-1:x);qs[${idx}]=Object.assign({},qs[${idx}],{options:o,correct:c}); render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.push('');qs[${idx}]=Object.assign({},qs[${idx}],{options:o});render();})()">+ Add choice</button>
+      <div class="meta" style="margin-top:8px;">Check every correct answer — there can be more than one.</div>
+    </div>`;
+  }
+  if(q.type==='saq'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge saq">Short answer</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      ${q.answers.map((a,ai)=>`
+        <div class="opt-row">
+          <input type="text" placeholder="Accepted answer ${ai+1}" value="${esc(a)}" style="flex:1" oninput="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].answers.slice();arr[${ai}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{answers:arr});}).call(this)">
+          ${q.answers.length>1 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].answers.slice();arr.splice(${ai},1);qs[${idx}]=Object.assign({},qs[${idx}],{answers:arr});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].answers.slice();arr.push('');qs[${idx}]=Object.assign({},qs[${idx}],{answers:arr});render();})()">+ Add accepted answer</button>
+      <div class="meta" style="margin-top:8px;">List every acceptable wording (not case-sensitive). Students type their answer into a text box.</div>
+    </div>`;
+  }
+  if(q.type==='order'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge order">Ordering</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="meta" style="margin-bottom:8px;">List the items in the correct order — students will see them shuffled and reorder with arrows.</div>
+      ${q.items.map((it,ii)=>`
+        <div class="opt-row">
+          <span class="mono" style="width:20px;color:var(--muted);">${ii+1}.</span>
+          <input type="text" placeholder="Item ${ii+1}" value="${esc(it)}" style="flex:1" oninput="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].items.slice();arr[${ii}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{items:arr});}).call(this)">
+          ${q.items.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].items.slice();arr.splice(${ii},1);qs[${idx}]=Object.assign({},qs[${idx}],{items:arr});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const arr=qs[${idx}].items.slice();arr.push('');qs[${idx}]=Object.assign({},qs[${idx}],{items:arr});render();})()">+ Add item</button>
     </div>`;
   }
   return `<div class="qcard">
@@ -1069,6 +1174,42 @@ function renderTakeTest(){
       <div class="choice-row ${state.takingAnswers[i]===true?'selected':''}" onclick="selectTf(${i},true)">True</div>
       <div class="choice-row ${state.takingAnswers[i]===false?'selected':''}" onclick="selectTf(${i},false)">False</div>
     `;
+  } else if(q.type==='msq'){
+    const sel = state.takingAnswers[i] || [];
+    qBody = q.options.map((opt,oi)=>`
+      <div class="choice-row ${sel.includes(oi)?'selected':''}" onclick="toggleMsq(${i},${oi})">
+        <span>${esc(opt)}</span>
+      </div>
+    `).join('') + `<div class="meta" style="margin-top:6px;">Select all that apply.</div>`;
+  } else if(q.type==='saq'){
+    qBody = `
+      <div class="field"><input type="text" id="saq-input-${i}" placeholder="Type your answer" value="${esc(state.takingAnswers[i]||'')}" oninput="setSaqAnswer(${i}, this.value)"></div>
+    `;
+  } else if(q.type==='order'){
+    if(!state._shuffleCache) state._shuffleCache = {};
+    const orderCacheKey = 'order-'+state.takingTestId+'-'+i;
+    if(!state._shuffleCache[orderCacheKey]){
+      const order = q.items.map((_,idx)=>idx);
+      for(let k=order.length-1;k>0;k--){ const j=Math.floor(Math.random()*(k+1)); [order[k],order[j]]=[order[j],order[k]]; }
+      state._shuffleCache[orderCacheKey]=order;
+    }
+    if(!state.takingAnswers[i]) state.takingAnswers[i] = state._shuffleCache[orderCacheKey].slice();
+    const seq = state.takingAnswers[i];
+    qBody = `
+      <div class="order-list">
+        ${seq.map((origIdx,pos)=>`
+          <div class="order-item">
+            <span class="order-pos">${pos+1}</span>
+            <span class="order-label">${esc(q.items[origIdx])}</span>
+            <div class="order-controls">
+              <button type="button" class="btn btn-outline btn-sm" ${pos===0?'disabled':''} onclick="moveOrderItem(${i},${pos},-1)">↑</button>
+              <button type="button" class="btn btn-outline btn-sm" ${pos===seq.length-1?'disabled':''} onclick="moveOrderItem(${i},${pos},1)">↓</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="meta" style="margin-top:10px;">Use the arrows to put the items in the correct order.</div>
+    `;
   } else if(q.type==='match'){
     if(!state._shuffleCache) state._shuffleCache = {};
     const cacheKey = state.takingTestId+'-'+i;
@@ -1101,7 +1242,11 @@ function renderTakeTest(){
     `;
   }
 
-  const canSubmitQ = q.type==='match' ? (state.takingAnswers[i]||[]).length===q.terms.length : answered;
+  const canSubmitQ = q.type==='match' ? (state.takingAnswers[i]||[]).length===q.terms.length
+    : q.type==='msq' ? (state.takingAnswers[i]||[]).length>0
+    : q.type==='order' ? true
+    : q.type==='saq' ? true
+    : answered;
 
   return `
   <button class="back-link" onclick="setState({view:'student-subject'})">← Exit test</button>
