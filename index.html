@@ -341,7 +341,11 @@ let state = {
 
   studentActiveClassroomId:null,
   studentActiveSubjectId:null,
-  studentSessionClassroomIds:[]
+  studentSessionClassroomIds:[],
+
+  gradeLookupTestId:null,
+  gradeLookupIdentity:{name:'', cls:'', number:''},
+  gradeLookupError:''
 };
 
 function setState(patch){
@@ -798,6 +802,33 @@ async function gradeLongAnswer(subId, qIndex, isCorrect){
 }
 
 /* =========================================================
+   STUDENT — GRADE LOOKUP (check a past result by identity)
+   ========================================================= */
+function openGradeLookup(testId){
+  setState({view:'grade-lookup', gradeLookupTestId:testId,
+    gradeLookupIdentity:{name:'', cls:'', number:''}, gradeLookupError:''});
+}
+
+function submitGradeLookup(){
+  const name = document.getElementById('lookup-name').value.trim();
+  const cls = document.getElementById('lookup-class').value.trim();
+  const number = document.getElementById('lookup-number').value.trim();
+  if(!name || !cls || !number){
+    setState({gradeLookupError:'Fill in your name, class, and number to see your grade.'}); return;
+  }
+  const matches = testSubmissions(state.gradeLookupTestId).filter(s=>
+    s.studentName.trim().toLowerCase()===name.toLowerCase() &&
+    s.studentClass.trim().toLowerCase()===cls.toLowerCase() &&
+    s.studentNumber.trim().toLowerCase()===number.toLowerCase()
+  ).sort((a,b)=>b.submittedAt-a.submittedAt);
+  if(matches.length===0){
+    setState({gradeLookupError:"We couldn't find a submission with that name, class, and number for this test."});
+    return;
+  }
+  setState({view:'test-result', resultSubmissionId:matches[0].id});
+}
+
+/* =========================================================
    RENDER
    ========================================================= */
 function render(){
@@ -816,6 +847,7 @@ function render(){
   else if(state.view==='take-test') body = renderTakeTest();
   else if(state.view==='test-submitted-notice') body = renderTestSubmittedNotice();
   else if(state.view==='test-result') body = renderTestResult();
+  else if(state.view==='grade-lookup') body = renderGradeLookup();
   else body = renderLanding();
 
   app.innerHTML = topbarHtml() + '<main>' + body + '</main>' + renderConfirmDialog();
@@ -1340,7 +1372,10 @@ function renderStudentSubject(){
       <div class="tile">
         <h3>${esc(t.title)}</h3>
         <div class="meta">${t.questions.length} question${t.questions.length===1?'':'s'}</div>
-        <div class="tile-actions"><button class="btn btn-blue btn-sm" onclick="beginTest('${t.id}')">Take test</button></div>
+        <div class="tile-actions">
+          <button class="btn btn-blue btn-sm" onclick="beginTest('${t.id}')">Take test</button>
+          <button class="btn btn-outline btn-sm" onclick="openGradeLookup('${t.id}')">See grade</button>
+        </div>
       </div>`).join('')}
   </div>`}`;
 }
@@ -1359,6 +1394,24 @@ function renderTakeTestIdentify(){
       <div class="field"><label>Class</label><input id="ident-class" type="text" placeholder="e.g. 7A" value="${esc(state.takingIdentity.cls)}"></div>
       <div class="field"><label>Number</label><input id="ident-number" type="text" placeholder="e.g. 12" value="${esc(state.takingIdentity.number)}"></div>
       <button class="btn btn-blue btn-full" onclick="startIdentifiedTest()">Start test</button>
+    </div>
+  </div>`;
+}
+
+function renderGradeLookup(){
+  const t = DATA.tests[state.gradeLookupTestId];
+  if(!t) return `<p>Test not found.</p>`;
+  return `
+  <button class="back-link" onclick="setState({view:'student-subject'})">← Cancel</button>
+  <div class="auth-wrap">
+    <div class="card">
+      <h2>${esc(t.title)}</h2>
+      <p class="meta" style="margin-top:-6px;">Enter your name, class, and number to see your grade.</p>
+      ${state.gradeLookupError ? `<div class="error-msg">${esc(state.gradeLookupError)}</div>` : ''}
+      <div class="field"><label>Name</label><input id="lookup-name" type="text" placeholder="Full name" value="${esc(state.gradeLookupIdentity.name)}"></div>
+      <div class="field"><label>Class</label><input id="lookup-class" type="text" placeholder="e.g. 7A" value="${esc(state.gradeLookupIdentity.cls)}"></div>
+      <div class="field"><label>Number</label><input id="lookup-number" type="text" placeholder="e.g. 12" value="${esc(state.gradeLookupIdentity.number)}"></div>
+      <button class="btn btn-blue btn-full" onclick="submitGradeLookup()">See my grade</button>
     </div>
   </div>`;
 }
