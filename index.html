@@ -320,6 +320,7 @@ const MATERIAL_TYPES = [
 ];
 
 const MAX_PROJECT_FILE_BYTES = 4 * 1024 * 1024; // 4MB — localStorage has limited space
+const MAX_MATERIAL_FILE_BYTES = 4 * 1024 * 1024; // 4MB — localStorage has limited space
 
 /* =========================================================
    APP STATE
@@ -333,6 +334,7 @@ let state = {
   activeSubjectId:null,
   activeSubjectTab:'materials',
   newMaterialType:'slides',
+  newMaterialFile:null,
 
   builderSubjectId:null,
   builderTitle:'',
@@ -406,6 +408,12 @@ function toast(msg){
    ========================================================= */
 function esc(s){
   return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function normalizeUrl(url){
+  const u = (url||'').trim();
+  if(!u) return '';
+  if(/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(u)) return u; // already has a scheme (http:, https:, mailto:, etc.)
+  return 'https://' + u;
 }
 
 function allClassrooms(){
@@ -585,19 +593,45 @@ async function deleteSubject(id){
   setState({view:'classroom-detail'});
 }
 
+function handleMaterialFileChange(inputEl){
+  const file = inputEl.files && inputEl.files[0];
+  if(!file) return;
+  if(file.size > MAX_MATERIAL_FILE_BYTES){
+    toast('That file is too big — please choose one under 4MB');
+    inputEl.value='';
+    setState({newMaterialFile:null});
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(){
+    setState({newMaterialFile:{name:file.name, size:file.size, dataUrl:reader.result}});
+  };
+  reader.onerror = function(){
+    toast('Could not read that file — please try again');
+  };
+  reader.readAsDataURL(file);
+}
+
 async function addMaterial(){
   const titleEl = document.getElementById('material-title');
   const descEl = document.getElementById('material-desc');
   const urlEl = document.getElementById('material-url');
   const title = titleEl.value.trim();
   const description = descEl.value.trim();
-  const url = urlEl.value.trim();
+  const url = normalizeUrl(urlEl.value.trim());
+  const f = state.newMaterialFile;
   if(!title){ toast('Give the material a title'); return; }
+  if(!url && !f){ toast('Add a link or attach a file'); return; }
   const id = uid('mat');
-  DATA.materials[id] = { subjectId: state.activeSubjectId, title, description, url, type: state.newMaterialType, addedAt: Date.now() };
+  DATA.materials[id] = {
+    subjectId: state.activeSubjectId, title, description, url, type: state.newMaterialType, addedAt: Date.now(),
+    fileName: f ? f.name : null, fileSize: f ? f.size : null, fileData: f ? f.dataUrl : null
+  };
   await saveData();
   titleEl.value=''; descEl.value=''; urlEl.value='';
-  render();
+  const fileInput = document.getElementById('material-file');
+  if(fileInput) fileInput.value='';
+  setState({newMaterialFile:null});
   toast('Added to subject');
 }
 async function deleteMaterial(id){
@@ -1213,9 +1247,13 @@ function renderSubjectDetail(){
       <div class="field" style="margin-bottom:8px;"><label>Description</label>
         <textarea id="material-desc" rows="2" placeholder="What is this material about?"></textarea>
       </div>
-      <div class="field" style="margin-bottom:10px;"><label>Link (optional — Teams, Drive, YouTube, anywhere)</label>
+      <div class="field" style="margin-bottom:8px;"><label>Link (optional — Teams, Drive, YouTube, anywhere)</label>
         <input id="material-url" type="text" placeholder="https://...">
       </div>
+      <div class="field" style="margin-bottom:4px;"><label>Or attach a file (optional, max 4MB)</label>
+        <input id="material-file" type="file" onchange="handleMaterialFileChange(this)">
+      </div>
+      ${state.newMaterialFile ? `<div class="meta" style="margin-bottom:10px;">Selected: ${esc(state.newMaterialFile.name)} (${formatFileSize(state.newMaterialFile.size)})</div>` : `<div class="meta" style="margin-bottom:10px;">Add a link, attach a file, or both.</div>`}
       <button class="btn btn-primary" onclick="addMaterial()">Add to subject</button>
     </div>
     ${materials.length===0 ? `<div class="empty-state">No materials yet — add slides, documents, or links for students to study from.</div>` : `
@@ -1231,7 +1269,8 @@ function renderSubjectDetail(){
             ${m.description ? `<div class="mdesc">${esc(m.description)}</div>` : ''}
             ${m.url ? `<div class="murl">${esc(m.url)}</div>` : ''}
           </div>
-          ${m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener"><button class="btn btn-outline btn-sm">Open</button></a>` : ''}
+          ${m.url ? `<a href="${esc(normalizeUrl(m.url))}" target="_blank" rel="noopener"><button class="btn btn-outline btn-sm">Open</button></a>` : ''}
+          ${m.fileData ? `<a href="${m.fileData}" download="${esc(m.fileName)}"><button class="btn btn-outline btn-sm">⬇ ${esc(m.fileName)}</button></a>` : ''}
           <button class="btn btn-danger btn-sm" onclick="deleteMaterial('${m.id}')">Remove</button>
         </div>`;
       }).join('')}
@@ -1639,7 +1678,8 @@ function renderStudentSubject(){
           ${m.description ? `<div class="mdesc">${esc(m.description)}</div>` : ''}
           ${m.url ? `<div class="murl">${esc(m.url)}</div>` : ''}
         </div>
-        ${m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener"><button class="btn btn-outline btn-sm">Open</button></a>` : ''}
+        ${m.url ? `<a href="${esc(normalizeUrl(m.url))}" target="_blank" rel="noopener"><button class="btn btn-outline btn-sm">Open</button></a>` : ''}
+        ${m.fileData ? `<a href="${m.fileData}" download="${esc(m.fileName)}"><button class="btn btn-outline btn-sm">⬇ ${esc(m.fileName)}</button></a>` : ''}
       </div>`;
     }).join('')}
   </div>`}
