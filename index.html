@@ -251,6 +251,14 @@
     font-weight:700;padding:4px 10px;border-radius:7px;font-size:12px;
   }
   .due-pill.overdue{background:var(--marker-red-dim);color:var(--marker-red);}
+  .announce-card{
+    background:var(--marker-yellow-dim);border:1px solid #ecd9a8;border-radius:12px;
+    padding:14px 16px;margin-bottom:10px;position:relative;
+  }
+  .announce-card .atext{font-size:14px;color:var(--ink);white-space:pre-wrap;line-height:1.5;padding-right:26px;}
+  .announce-card .ameta{font-size:11.5px;color:#8a6412;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+  .announce-card .remove-ann{position:absolute;top:12px;right:14px;background:none;border:none;color:#8a6412;font-size:13px;}
+  .announce-card .remove-ann:hover{color:var(--marker-red);}
   .submission-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:14px;}
   .grade-badge{
     display:inline-flex;align-items:center;font-weight:700;padding:3px 9px;border-radius:7px;font-size:12.5px;
@@ -322,7 +330,7 @@ function idbSet(key, value){
 }
 
 function blankData(){
-  return { classrooms:{}, subjects:{}, materials:{}, tests:{}, submissions:{}, projects:{}, projectSubmissions:{} };
+  return { classrooms:{}, subjects:{}, materials:{}, tests:{}, submissions:{}, projects:{}, projectSubmissions:{}, announcements:{} };
 }
 
 async function loadData(){
@@ -485,6 +493,9 @@ function allClassrooms(){
 function classroomSubjects(classroomId){
   return Object.entries(DATA.subjects).filter(([id,s])=>s.classroomId===classroomId).map(([id,s])=>Object.assign({id},s));
 }
+function classroomAnnouncements(classroomId){
+  return Object.entries(DATA.announcements).filter(([id,a])=>a.classroomId===classroomId).map(([id,a])=>Object.assign({id},a)).sort((a,b)=>b.createdAt-a.createdAt);
+}
 function subjectMaterials(subjectId){
   return Object.entries(DATA.materials).filter(([id,m])=>m.subjectId===subjectId).map(([id,m])=>Object.assign({id},m)).sort((a,b)=>a.addedAt-b.addedAt);
 }
@@ -622,8 +633,26 @@ async function deleteClassroom(id){
       }
     });
   });
+  Object.keys(DATA.announcements).forEach(aid=>{ if(DATA.announcements[aid].classroomId===id) delete DATA.announcements[aid]; });
   await saveData();
   setState({view:'teacher-dashboard'});
+}
+
+async function postAnnouncement(){
+  const input = document.getElementById('new-announcement-text');
+  const text = input.value.trim();
+  if(!text) return;
+  const id = uid('ann');
+  DATA.announcements[id] = { classroomId: state.activeClassroomId, text, createdAt: Date.now() };
+  await saveData();
+  input.value='';
+  render();
+  toast('Announcement posted');
+}
+async function deleteAnnouncement(id){
+  delete DATA.announcements[id];
+  await saveData();
+  render();
 }
 
 async function createSubject(){
@@ -684,7 +713,6 @@ async function addMaterial(){
   const url = normalizeUrl(urlEl.value.trim());
   const f = state.newMaterialFile;
   if(!title){ toast('Give the material a title'); return; }
-  if(!url && !f){ toast('Add a link or attach a file'); return; }
   const id = uid('mat');
   DATA.materials[id] = {
     subjectId: state.activeSubjectId, title, description, url, type: state.newMaterialType, addedAt: Date.now(),
@@ -1074,6 +1102,7 @@ async function submitProject(){
   if(!state.submittingFile){ toast('Choose a file to submit first'); return; }
   const noteEl = document.getElementById('project-note');
   const note = noteEl ? noteEl.value.trim() : '';
+  const proj = DATA.projects[state.activeProjectId];
   const id = uid('psub');
   DATA.projectSubmissions[id] = {
     projectId: state.activeProjectId,
@@ -1085,6 +1114,7 @@ async function submitProject(){
     fileData: state.submittingFile.dataUrl,
     note,
     submittedAt: Date.now(),
+    late: !!(proj && proj.dueDate && isPastDue(proj.dueDate)),
     grade: null,
     feedback: '',
     gradedAt: null
@@ -1237,6 +1267,7 @@ function renderClassroomDetail(){
   const c = Object.assign({id:state.activeClassroomId}, DATA.classrooms[state.activeClassroomId]);
   if(!c.name) return `<p>Class not found.</p>`;
   const subjects = classroomSubjects(c.id);
+  const announcements = classroomAnnouncements(c.id);
   return `
   <div class="crumbs">
     <button onclick="setState({view:'teacher-dashboard'})">Your classes</button>
@@ -1250,6 +1281,26 @@ function renderClassroomDetail(){
     </div>
     <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this class and everything in it?', ()=>deleteClassroom('${c.id}'))">Delete class</button>
   </div>
+
+  <h3 style="margin:0 0 10px;font-size:16px;">Announcements</h3>
+  <div class="card" style="margin-bottom:16px;max-width:520px;">
+    <div class="field" style="margin-bottom:10px;"><label>Post an announcement</label>
+      <textarea id="new-announcement-text" rows="2" placeholder="e.g. Test moved to Friday"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="postAnnouncement()">Post</button>
+  </div>
+  ${announcements.length>0 ? `
+  <div style="margin-bottom:26px;max-width:520px;">
+    ${announcements.map(a=>`
+      <div class="announce-card">
+        <button class="remove-ann" onclick="askConfirm('Delete this announcement?', ()=>deleteAnnouncement('${a.id}'))">✕</button>
+        <div class="atext">${esc(a.text)}</div>
+        <div class="ameta">${new Date(a.createdAt).toLocaleString()}</div>
+      </div>
+    `).join('')}
+  </div>` : `<div class="empty-state" style="margin-bottom:26px;">No announcements yet.</div>`}
+
+  <h3 style="margin:0 0 10px;font-size:16px;">Subjects</h3>
   <div class="card" style="margin-bottom:20px;max-width:420px;">
     <div class="field" style="margin-bottom:10px;"><label>New subject</label>
       <input id="new-subject-name" type="text" placeholder="e.g. English, Math, Science">
@@ -1316,7 +1367,7 @@ function renderSubjectDetail(){
       <div class="field" style="margin-bottom:4px;"><label>Or attach a file (optional, max 50MB)</label>
         <input id="material-file" type="file" onchange="handleMaterialFileChange(this)">
       </div>
-      ${state.newMaterialFile ? `<div class="meta" style="margin-bottom:10px;">Selected: ${esc(state.newMaterialFile.name)} (${formatFileSize(state.newMaterialFile.size)})</div>` : `<div class="meta" style="margin-bottom:10px;">Add a link, attach a file, or both.</div>`}
+      ${state.newMaterialFile ? `<div class="meta" style="margin-bottom:10px;">Selected: ${esc(state.newMaterialFile.name)} (${formatFileSize(state.newMaterialFile.size)})</div>` : `<div class="meta" style="margin-bottom:10px;">Link and file are both optional — add either, both, or neither.</div>`}
       <button class="btn btn-primary" onclick="addMaterial()">Add to subject</button>
     </div>
     ${materials.length===0 ? `<div class="empty-state">No materials yet — add slides, documents, or links for students to study from.</div>` : `
@@ -1626,7 +1677,7 @@ function renderProjectSubmissions(){
     <div class="submission-card">
       <div class="list-row" style="align-items:flex-start;">
         <div style="flex:1;min-width:0;">
-          <div style="font-weight:600;">${esc(s.studentName)} · ${esc(s.studentClass)} · No. ${esc(s.studentNumber)}</div>
+          <div style="font-weight:600;">${esc(s.studentName)} · ${esc(s.studentClass)} · No. ${esc(s.studentNumber)} ${s.late ? `<span class="due-pill overdue" style="margin-left:6px;">Late</span>` : ''}</div>
           <div class="meta" style="margin-top:2px;">Submitted ${new Date(s.submittedAt).toLocaleString()}</div>
           ${s.note ? `<div class="mdesc" style="margin-top:8px;">${esc(s.note)}</div>` : ''}
         </div>
@@ -1687,6 +1738,7 @@ function renderStudentClassroom(){
   const c = Object.assign({id:state.studentActiveClassroomId}, DATA.classrooms[state.studentActiveClassroomId]);
   if(!c.name) return `<p>Class not found.</p>`;
   const subjects = classroomSubjects(c.id);
+  const announcements = classroomAnnouncements(c.id);
   return `
   <div class="crumbs">
     <button onclick="setState({view:'student-dashboard'})">Your classes</button>
@@ -1694,6 +1746,15 @@ function renderStudentClassroom(){
     <span class="current">${esc(c.name)}</span>
   </div>
   <div class="page-head"><h1>${esc(c.name)}</h1></div>
+  ${announcements.length>0 ? `
+  <div style="margin-bottom:24px;">
+    ${announcements.map(a=>`
+      <div class="announce-card">
+        <div class="atext">${esc(a.text)}</div>
+        <div class="ameta">${new Date(a.createdAt).toLocaleString()}</div>
+      </div>
+    `).join('')}
+  </div>` : ''}
   ${subjects.length===0 ? `<div class="empty-state">No subjects added here yet — check back soon.</div>` : `
   <div class="grid">
     ${subjects.map(s=>{
@@ -1904,7 +1965,7 @@ function renderProjectResult(){
   <button class="back-link" onclick="setState({view:'${backView}', activeProjectId:'${sub.projectId}'})">← Back</button>
   <div class="page-head"><h1>${esc(p?p.title:'Project')}</h1></div>
   ${p && p.description ? `<p class="meta" style="margin-top:-14px;">${esc(p.description)}</p>` : ''}
-  <div class="meta" style="margin:0 0 18px;">${esc(sub.studentName)} · ${esc(sub.studentClass)} · No. ${esc(sub.studentNumber)}</div>
+  <div class="meta" style="margin:0 0 18px;">${esc(sub.studentName)} · ${esc(sub.studentClass)} · No. ${esc(sub.studentNumber)} ${sub.late ? `<span class="due-pill overdue" style="margin-left:6px;">Late</span>` : ''}</div>
   <div class="score-hero">
     ${graded
       ? `<div class="num">${sub.grade}<span>/100</span></div><div class="meta" style="margin-top:6px;">Graded ${sub.gradedAt ? new Date(sub.gradedAt).toLocaleDateString() : ''}</div>`
