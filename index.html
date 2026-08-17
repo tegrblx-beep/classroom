@@ -173,6 +173,22 @@
   .qtype-badge.order{background:var(--marker-red-dim);color:var(--marker-red);}
   .qtype-badge.numeric{background:var(--marker-purple-dim);color:var(--marker-purple);}
   .qtype-badge.manual{background:var(--marker-yellow-dim);color:#8a6412;}
+  .qtype-badge.cloze{background:var(--marker-blue-dim);color:var(--marker-blue);}
+  .qtype-badge.dropdowncloze{background:var(--marker-teal-dim);color:var(--marker-teal);}
+  .qtype-badge.categorize{background:var(--marker-purple-dim);color:var(--marker-purple);}
+  .qtype-badge.stateset{background:var(--marker-yellow-dim);color:#8a6412;}
+  .qtype-badge.rating{background:var(--paper-dim);color:var(--muted);}
+  .qtype-badge.rubric{background:var(--marker-red-dim);color:var(--marker-red);}
+  .qtype-badge.code{background:var(--marker-blue-dim);color:var(--marker-blue);}
+  .qtype-badge.fileupload{background:var(--marker-teal-dim);color:var(--marker-teal);}
+  .qtype-badge.allocation{background:var(--marker-purple-dim);color:var(--marker-purple);}
+  .qtype-badge.audio{background:var(--marker-yellow-dim);color:#8a6412;}
+  .rating-row{display:flex;gap:8px;margin:10px 0;}
+  .rating-opt{flex:1;text-align:center;border:1.5px solid var(--line);border-radius:9px;padding:14px 6px;cursor:pointer;background:#fff;font-weight:700;}
+  .rating-opt.selected{border-color:var(--marker-blue);background:var(--marker-blue-dim);color:var(--marker-blue);}
+  .rec-btn{display:inline-flex;align-items:center;gap:8px;}
+  .rec-dot{width:10px;height:10px;border-radius:50%;background:var(--marker-red);display:inline-block;animation:pulse 1.2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
   .qcard .remove-q{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:13px;}
   .qcard .remove-q:hover{color:var(--marker-red);}
   .opt-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
@@ -410,6 +426,7 @@ let state = {
   builderSubjectId:null,
   builderTitle:'',
   builderQuestions:[],
+  editingTestId:null,
 
   activeTestId:null,
   takingTestId:null,
@@ -530,10 +547,17 @@ function answerPreview(q, ans){
   if(q.type==='mcq') return (ans!=null && q.options[ans]!==undefined) ? q.options[ans] : '(no answer)';
   if(q.type==='tf') return ans===true ? 'True' : ans===false ? 'False' : '(no answer)';
   if(q.type==='match') return (ans && ans.length) ? ans.map(p=>`${q.terms[p.left]} → ${q.defs[p.right]}`).join('; ') : '(no answer)';
-  if(q.type==='short' || q.type==='long') return (ans && String(ans).trim()) ? ans : '(no answer)';
+  if(q.type==='short' || q.type==='long' || q.type==='rubric' || q.type==='code') return (ans && String(ans).trim()) ? ans : '(no answer)';
   if(q.type==='msq') return (ans && ans.length) ? ans.map(oi=>q.options[oi]).join(', ') : '(no answer)';
   if(q.type==='order') return (ans && ans.length) ? ans.map(ii=>q.items[ii]).join(' → ') : '(no answer)';
   if(q.type==='numeric') return (ans!==undefined && ans!==null && String(ans).trim()!=='') ? String(ans) : '(no answer)';
+  if(q.type==='cloze') return (ans && ans.length) ? ans.map((v,bi)=>`Blank ${bi+1}: ${v||'(blank)'}`).join('; ') : '(no answer)';
+  if(q.type==='dropdowncloze') return (ans && ans.length) ? ans.map((v,bi)=>`Blank ${bi+1}: ${v||'(blank)'}`).join('; ') : '(no answer)';
+  if(q.type==='categorize') return (ans && ans.length) ? q.items.map((it,ii)=>`${it.label}: ${ans[ii]!==undefined ? (q.categories[ans[ii]]||'?') : '(none)'}`).join('; ') : '(no answer)';
+  if(q.type==='stateset') return (ans && ans.length) ? q.statements.map((st,si)=>`${st.text}: ${ans[si]===true?'True':ans[si]===false?'False':'(none)'}`).join('; ') : '(no answer)';
+  if(q.type==='rating') return (ans!==undefined && ans!==null) ? String(ans) : '(no answer)';
+  if(q.type==='allocation') return (ans && Object.keys(ans).length) ? q.items.map((it,ii)=>`${it.label}: ${ans[ii]!==undefined?ans[ii]:'0'}`).join('; ') : '(no answer)';
+  if(q.type==='fileupload' || q.type==='audio') return (ans && ans.dataUrl) ? (ans.name || 'Attached') : '(no answer)';
   return '';
 }
 function formatFileSize(bytes){
@@ -731,8 +755,16 @@ async function deleteMaterial(id){
   render();
 }
 
-function startTestBuilder(subjectId){
-  setState({view:'test-builder', builderSubjectId:subjectId, builderTitle:'', builderQuestions:[]});
+function startTestBuilder(subjectId, testId){
+  if(testId){
+    const t = DATA.tests[testId];
+    if(t){
+      setState({view:'test-builder', builderSubjectId:subjectId, editingTestId:testId,
+        builderTitle:t.title, builderQuestions: JSON.parse(JSON.stringify(t.questions))});
+      return;
+    }
+  }
+  setState({view:'test-builder', builderSubjectId:subjectId, editingTestId:null, builderTitle:'', builderQuestions:[]});
 }
 
 function addBuilderQuestion(type){
@@ -744,6 +776,16 @@ function addBuilderQuestion(type){
   else if(type==='msq') q = {type:'msq', text:'', options:['','',''], correct:[0], manualGrade:false};
   else if(type==='order') q = {type:'order', text:'', items:['','',''], manualGrade:false};
   else if(type==='numeric') q = {type:'numeric', text:'', answer:0, tolerance:0, manualGrade:false};
+  else if(type==='cloze') q = {type:'cloze', text:'Paris is the capital of ___.', blanks:[{accepted:'Paris'}], manualGrade:false};
+  else if(type==='dropdowncloze') q = {type:'dropdowncloze', text:'Paris is the capital of ___.', blanks:[{options:'France, Spain, Italy', correct:'France'}], manualGrade:false};
+  else if(type==='categorize') q = {type:'categorize', text:'Sort each item into the correct category', categories:['Category A','Category B'], items:[{label:'', correctCategory:0}], manualGrade:false};
+  else if(type==='stateset') q = {type:'stateset', text:'Mark each statement True or False', statements:[{text:'', correct:true}], manualGrade:false};
+  else if(type==='rating') q = {type:'rating', text:'', scaleMin:1, scaleMax:5, minLabel:'Not confident', maxLabel:'Very confident', manualGrade:true};
+  else if(type==='rubric') q = {type:'rubric', text:'', criteria:[{label:'Content', points:10}], manualGrade:true};
+  else if(type==='code') q = {type:'code', text:'', starterCode:'', manualGrade:true};
+  else if(type==='fileupload') q = {type:'fileupload', text:'', manualGrade:true};
+  else if(type==='allocation') q = {type:'allocation', text:'Distribute the total across these items', items:[{label:'', target:50, tolerance:5}, {label:'', target:50, tolerance:5}], total:100, manualGrade:false};
+  else if(type==='audio') q = {type:'audio', text:'', manualGrade:true};
   else q = {type:'long', text:'', modelAnswer:''};
   setState({builderQuestions:[...state.builderQuestions, q]});
 }
@@ -781,6 +823,18 @@ async function saveTest(){
     }
     if(q.type==='order' && q.items.some(t=>!t.trim())){ toast('Fill in every item for each ordering question'); return; }
     if(q.type==='numeric' && (q.answer===undefined || q.answer===null || isNaN(parseFloat(q.answer)))){ toast('Give a numeric answer for each numeric question'); return; }
+    if(q.type==='cloze' && q.blanks.some(b=>!b.accepted || !b.accepted.trim())){ toast('Fill in an accepted answer for every blank'); return; }
+    if(q.type==='dropdowncloze' && q.blanks.some(b=>!b.options || !b.options.trim() || !b.correct || !b.correct.trim())){ toast('Fill in the choices and correct answer for every blank'); return; }
+    if(q.type==='categorize'){
+      if(q.categories.some(c=>!c.trim())){ toast('Fill in every category name'); return; }
+      if(q.items.some(it=>!it.label.trim())){ toast('Fill in every item to sort'); return; }
+    }
+    if(q.type==='stateset' && q.statements.some(s=>!s.text.trim())){ toast('Fill in every statement'); return; }
+    if(q.type==='rubric' && q.criteria.some(c=>!c.label.trim() || c.points===undefined || c.points===null || isNaN(parseFloat(c.points)))){ toast('Fill in a label and points for every rubric criterion'); return; }
+    if(q.type==='allocation'){
+      if(!q.total || isNaN(parseFloat(q.total)) || parseFloat(q.total)<=0){ toast('Give a total to allocate greater than 0'); return; }
+      if(q.items.some(it=>!it.label.trim() || it.target===undefined || it.target===null || isNaN(parseFloat(it.target)))){ toast('Fill in a label and target for every allocation item'); return; }
+    }
   }
   const settings = {
     shuffle: !!document.getElementById('builder-shuffle').checked,
@@ -788,11 +842,11 @@ async function saveTest(){
     showResults: !!document.getElementById('builder-showresults').checked,
     allowRetake: !!document.getElementById('builder-allowretake').checked
   };
-  const id = uid('test');
+  const id = state.editingTestId || uid('test');
   DATA.tests[id] = { subjectId: state.builderSubjectId, title, questions: state.builderQuestions, settings };
   await saveData();
-  setState({view:'subject-detail', activeSubjectId: state.builderSubjectId, activeSubjectTab:'tests'});
-  toast('Test saved');
+  setState({view:'subject-detail', activeSubjectId: state.builderSubjectId, activeSubjectTab:'tests', editingTestId:null});
+  toast(state.editingTestId ? 'Test updated' : 'Test saved');
 }
 
 async function deleteTest(id){
@@ -966,6 +1020,91 @@ function matchClickRight(qIndex, rightIdx){
   setState({takingAnswers:a, takingPending:pend});
 }
 
+function updateClozeBlank(qIndex, blankIndex, val){
+  const cur = (state.takingAnswers[qIndex] || []).slice();
+  cur[blankIndex] = val;
+  state.takingAnswers = Object.assign({}, state.takingAnswers, {[qIndex]:cur});
+}
+function selectDropdownCloze(qIndex, blankIndex, val){
+  const cur = (state.takingAnswers[qIndex] || []).slice();
+  cur[blankIndex] = val;
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:cur});
+  setState({takingAnswers:a});
+}
+function selectCategorizeItem(qIndex, itemIndex, val){
+  const cur = (state.takingAnswers[qIndex] || []).slice();
+  cur[itemIndex] = val===''? undefined : parseInt(val,10);
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:cur});
+  setState({takingAnswers:a});
+}
+function selectStatementAnswer(qIndex, stmtIndex, val){
+  const cur = (state.takingAnswers[qIndex] || []).slice();
+  cur[stmtIndex] = val;
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:cur});
+  setState({takingAnswers:a});
+}
+function selectRating(qIndex, val){
+  const a = Object.assign({}, state.takingAnswers, {[qIndex]:val});
+  setState({takingAnswers:a});
+}
+function updateAllocationItem(qIndex, itemIndex, val){
+  const cur = Object.assign({}, state.takingAnswers[qIndex] || {});
+  cur[itemIndex] = val;
+  state.takingAnswers = Object.assign({}, state.takingAnswers, {[qIndex]:cur});
+}
+function handleExamFileAnswer(qIndex, inputEl){
+  const file = inputEl.files && inputEl.files[0];
+  if(!file) return;
+  if(file.size > MAX_PROJECT_FILE_BYTES){
+    toast('That file is too big — please choose one under '+formatFileSize(MAX_PROJECT_FILE_BYTES));
+    inputEl.value='';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(){
+    const a = Object.assign({}, state.takingAnswers, {[qIndex]:{name:file.name, size:file.size, dataUrl:reader.result}});
+    setState({takingAnswers:a});
+  };
+  reader.onerror = function(){ toast('Could not read that file — please try again'); };
+  reader.readAsDataURL(file);
+}
+
+/* ---- audio response recording ---- */
+let audioRecorder = null;
+let audioChunks = [];
+let audioRecordingQIndex = null;
+async function startAudioRecording(qIndex){
+  if(!navigator.mediaDevices || !window.MediaRecorder){
+    toast('Your browser does not support audio recording');
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    audioChunks = [];
+    audioRecorder = new MediaRecorder(stream);
+    audioRecorder.ondataavailable = e=>{ if(e.data.size>0) audioChunks.push(e.data); };
+    audioRecorder.onstop = function(){
+      stream.getTracks().forEach(tr=>tr.stop());
+      const blob = new Blob(audioChunks, {type: audioRecorder.mimeType || 'audio/webm'});
+      const reader = new FileReader();
+      reader.onload = function(){
+        const a = Object.assign({}, state.takingAnswers, {[qIndex]:{dataUrl:reader.result, size:blob.size}});
+        audioRecordingQIndex = null;
+        setState({takingAnswers:a});
+      };
+      reader.readAsDataURL(blob);
+    };
+    audioRecorder.start();
+    audioRecordingQIndex = qIndex;
+    render();
+  }catch(e){
+    toast('Could not access the microphone — check your browser permissions');
+  }
+}
+function stopAudioRecording(){
+  if(audioRecorder && audioRecorder.state!=='inactive') audioRecorder.stop();
+}
+
 function goToQuestion(i){ setState({takingIndex:i}); }
 
 async function submitTest(){
@@ -1001,6 +1140,27 @@ async function submitTest(){
     } else if(q.type==='numeric'){
       const val = parseFloat(ans);
       correct = !isNaN(val) && Math.abs(val - parseFloat(q.answer)) <= (parseFloat(q.tolerance)||0);
+    } else if(q.type==='cloze'){
+      const a = ans || [];
+      correct = q.blanks.every((b,bi)=>{
+        const accepted = (b.accepted||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+        return accepted.includes(String(a[bi]||'').trim().toLowerCase());
+      });
+    } else if(q.type==='dropdowncloze'){
+      const a = ans || [];
+      correct = q.blanks.every((b,bi)=> String(a[bi]||'').trim() === String(b.correct||'').trim());
+    } else if(q.type==='categorize'){
+      const a = ans || [];
+      correct = q.items.every((it,ii)=> a[ii]===it.correctCategory);
+    } else if(q.type==='stateset'){
+      const a = ans || [];
+      correct = q.statements.every((st,si)=> a[si]===st.correct);
+    } else if(q.type==='allocation'){
+      const a = ans || {};
+      correct = q.items.every((it,ii)=>{
+        const val = parseFloat(a[ii]);
+        return !isNaN(val) && Math.abs(val - parseFloat(it.target)) <= (parseFloat(it.tolerance)||0);
+      });
     }
     if(correct===true) score++;
     detail.push({question:q, answer:ans, correct});
@@ -1032,6 +1192,20 @@ async function gradeLongAnswer(subId, qIndex, isCorrect){
   await saveData();
   render();
   toast(isCorrect ? 'Marked correct' : 'Marked incorrect');
+}
+
+async function overrideSubmissionScore(subId){
+  const input = document.getElementById('score-override-input');
+  if(!input) return;
+  const val = parseFloat(input.value);
+  if(isNaN(val) || val<0){ toast('Enter a valid score'); return; }
+  const sub = DATA.submissions[subId];
+  if(!sub) return;
+  sub.score = val;
+  sub.scoreOverridden = true;
+  await saveData();
+  render();
+  toast('Final score updated');
 }
 
 /* =========================================================
@@ -1400,6 +1574,7 @@ function renderSubjectDetail(){
           <h3>${esc(t.title)}</h3>
           <div class="meta">${t.questions.length} question${t.questions.length===1?'':'s'} · ${testSubmissions(t.id).length} submission${testSubmissions(t.id).length===1?'':'s'}</div>
           <div class="tile-actions">
+            <button class="btn btn-outline btn-sm" onclick="startTestBuilder('${s.id}','${t.id}')">Edit</button>
             <button class="btn btn-outline btn-sm" onclick="viewTestResults('${t.id}')">Results</button>
             <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this test?', ()=>deleteTest('${t.id}'))">Delete</button>
           </div>
@@ -1444,9 +1619,11 @@ function renderSubjectDetail(){
 function renderTestBuilder(){
   const qs = state.builderQuestions;
   const s = DATA.subjects[state.builderSubjectId];
+  const editingTest = state.editingTestId ? DATA.tests[state.editingTestId] : null;
+  const settings = testSettings(editingTest);
   return `
-  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:state.builderSubjectId, activeSubjectTab:'tests'})">← Cancel</button>
-  <div class="page-head"><h1>New test ${s?('· '+esc(s.name)):''}</h1></div>
+  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:state.builderSubjectId, activeSubjectTab:'tests', editingTestId:null})">← Cancel</button>
+  <div class="page-head"><h1>${editingTest?'Edit test':'New test'} ${s?('· '+esc(s.name)):''}</h1></div>
   <div class="card" style="margin-bottom:22px;max-width:500px;">
     <div class="field"><label>Test title</label>
       <input id="builder-title-input" type="text" placeholder="e.g. Chapter 4 Quiz" value="${esc(state.builderTitle)}" oninput="state.builderTitle=this.value">
@@ -1456,17 +1633,17 @@ function renderTestBuilder(){
   <div class="card" style="margin-bottom:22px;max-width:500px;">
     <h3 style="margin:0 0 12px;font-size:15px;">Test settings</h3>
     <div class="field" style="margin-bottom:10px;">
-      <label class="settings-check"><input type="checkbox" id="builder-shuffle"> Shuffle question order for each student</label>
+      <label class="settings-check"><input type="checkbox" id="builder-shuffle" ${settings.shuffle?'checked':''}> Shuffle question order for each student</label>
     </div>
     <div class="field" style="margin-bottom:10px;">
       <label>Time limit (minutes — 0 for no limit)</label>
-      <input type="number" id="builder-timelimit" min="0" step="1" value="0" style="max-width:120px;">
+      <input type="number" id="builder-timelimit" min="0" step="1" value="${settings.timeLimitMin}" style="max-width:120px;">
     </div>
     <div class="field" style="margin-bottom:10px;">
-      <label class="settings-check"><input type="checkbox" id="builder-showresults" checked> Show results to students right after they submit</label>
+      <label class="settings-check"><input type="checkbox" id="builder-showresults" ${settings.showResults?'checked':''}> Show results to students right after they submit</label>
     </div>
     <div class="field" style="margin-bottom:0;">
-      <label class="settings-check"><input type="checkbox" id="builder-allowretake" checked> Allow students to retake this test</label>
+      <label class="settings-check"><input type="checkbox" id="builder-allowretake" ${settings.allowRetake?'checked':''}> Allow students to retake this test</label>
     </div>
   </div>
 
@@ -1481,9 +1658,19 @@ function renderTestBuilder(){
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('numeric')">+ Numeric answer</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('short')">+ Short answer</button>
     <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('long')">+ Long answer</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('cloze')">+ Fill in the blank</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('dropdowncloze')">+ Dropdown cloze</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('categorize')">+ Categorize / sort</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('stateset')">+ Statement set (T/F batch)</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('rating')">+ Rating scale</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('rubric')">+ Essay with rubric</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('code')">+ Code answer</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('fileupload')">+ File upload answer</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('allocation')">+ Point allocation</button>
+    <button class="btn btn-outline btn-sm" onclick="addBuilderQuestion('audio')">+ Audio response</button>
   </div>
 
-  <button class="btn btn-primary" onclick="saveTest()">Save test</button>
+  <button class="btn btn-primary" onclick="saveTest()">${editingTest?'Save changes':'Save test'}</button>
   `;
 }
 
@@ -1614,6 +1801,189 @@ function renderBuilderQuestion(q, idx){
         <textarea rows="2" oninput="updateBuilderQuestion(${idx},{modelAnswer:this.value})">${esc(q.modelAnswer||'')}</textarea>
       </div>
       <div class="meta">Students type a written response — you grade these by hand after they submit.</div>
+    </div>`;
+  }
+  if(q.type==='cloze'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge cloze">Fill in the blank</span>
+      <div class="field"><label>Sentence — use ___ for each blank, in order</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="meta" style="margin-bottom:8px;">One row below per ___ in the sentence, in the same order. Separate alternate accepted answers with commas.</div>
+      ${q.blanks.map((b,bi)=>`
+        <div class="opt-row">
+          <span class="mono" style="width:56px;color:var(--muted);">Blank ${bi+1}</span>
+          <input type="text" placeholder="Accepted answer(s), comma separated" value="${esc(b.accepted)}" oninput="(function(){const qs=state.builderQuestions;const bl=qs[${idx}].blanks.slice();bl[${bi}]=Object.assign({},bl[${bi}],{accepted:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{blanks:bl});}).call(this)">
+          ${q.blanks.length>1 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const bl=qs[${idx}].blanks.slice();bl.splice(${bi},1);qs[${idx}]=Object.assign({},qs[${idx}],{blanks:bl});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const bl=qs[${idx}].blanks.slice();bl.push({accepted:''});qs[${idx}]=Object.assign({},qs[${idx}],{blanks:bl});render();})()">+ Add blank</button>
+      ${renderManualGradeToggle(idx, q)}
+    </div>`;
+  }
+  if(q.type==='dropdowncloze'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge dropdowncloze">Dropdown cloze</span>
+      <div class="field"><label>Sentence — use ___ for each blank, in order</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="meta" style="margin-bottom:8px;">One row below per ___ in the sentence. List the dropdown choices comma-separated, then type the correct one exactly as it appears in that list.</div>
+      ${q.blanks.map((b,bi)=>`
+        <div class="opt-row" style="align-items:flex-start;">
+          <div class="field" style="margin-bottom:0;flex:1;"><label style="text-transform:none;font-size:11px;">Blank ${bi+1} choices (comma separated)</label>
+            <input type="text" placeholder="France, Spain, Italy" value="${esc(b.options)}" oninput="(function(){const qs=state.builderQuestions;const bl=qs[${idx}].blanks.slice();bl[${bi}]=Object.assign({},bl[${bi}],{options:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{blanks:bl});}).call(this)">
+          </div>
+          <div class="field" style="margin-bottom:0;flex:1;"><label style="text-transform:none;font-size:11px;">Correct choice</label>
+            <input type="text" placeholder="France" value="${esc(b.correct)}" oninput="(function(){const qs=state.builderQuestions;const bl=qs[${idx}].blanks.slice();bl[${bi}]=Object.assign({},bl[${bi}],{correct:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{blanks:bl});}).call(this)">
+          </div>
+          ${q.blanks.length>1 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const bl=qs[${idx}].blanks.slice();bl.splice(${bi},1);qs[${idx}]=Object.assign({},qs[${idx}],{blanks:bl});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const bl=qs[${idx}].blanks.slice();bl.push({options:'',correct:''});qs[${idx}]=Object.assign({},qs[${idx}],{blanks:bl});render();})()">+ Add blank</button>
+      ${renderManualGradeToggle(idx, q)}
+    </div>`;
+  }
+  if(q.type==='categorize'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge categorize">Categorize / sort</span>
+      <div class="field"><label>Instructions</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="meta" style="margin:4px 0;">Categories</div>
+      ${q.categories.map((cat,ci)=>`
+        <div class="opt-row">
+          <input type="text" placeholder="Category ${ci+1}" value="${esc(cat)}" oninput="(function(){const qs=state.builderQuestions;const c=qs[${idx}].categories.slice();c[${ci}]=this.value;qs[${idx}]=Object.assign({},qs[${idx}],{categories:c});render();}).call(this)">
+          ${q.categories.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const c=qs[${idx}].categories.slice();c.splice(${ci},1);const it=qs[${idx}].items.map(x=>x.correctCategory>=c.length?Object.assign({},x,{correctCategory:0}):x);qs[${idx}]=Object.assign({},qs[${idx}],{categories:c,items:it});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const c=qs[${idx}].categories.slice();c.push('');qs[${idx}]=Object.assign({},qs[${idx}],{categories:c});render();})()">+ Add category</button>
+      <div class="meta" style="margin:14px 0 4px;">Items to sort</div>
+      ${q.items.map((item,ii)=>`
+        <div class="opt-row">
+          <input type="text" placeholder="Item ${ii+1}" value="${esc(item.label)}" style="flex:1" oninput="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it[${ii}]=Object.assign({},it[${ii}],{label:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{items:it});}).call(this)">
+          <select onchange="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it[${ii}]=Object.assign({},it[${ii}],{correctCategory:parseInt(this.value,10)});qs[${idx}]=Object.assign({},qs[${idx}],{items:it});}).call(this)">
+            ${q.categories.map((cat,ci)=>`<option value="${ci}" ${item.correctCategory===ci?'selected':''}>${esc(cat||'Category '+(ci+1))}</option>`).join('')}
+          </select>
+          ${q.items.length>1 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it.splice(${ii},1);qs[${idx}]=Object.assign({},qs[${idx}],{items:it});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it.push({label:'',correctCategory:0});qs[${idx}]=Object.assign({},qs[${idx}],{items:it});render();})()">+ Add item</button>
+      ${renderManualGradeToggle(idx, q)}
+    </div>`;
+  }
+  if(q.type==='stateset'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge stateset">Statement set (T/F batch)</span>
+      <div class="field"><label>Instructions</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      ${q.statements.map((st,si)=>`
+        <div class="opt-row">
+          <input type="text" placeholder="Statement ${si+1}" value="${esc(st.text)}" style="flex:1" oninput="(function(){const qs=state.builderQuestions;const s=qs[${idx}].statements.slice();s[${si}]=Object.assign({},s[${si}],{text:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{statements:s});}).call(this)">
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="radio" name="stateset-${idx}-${si}" ${st.correct===true?'checked':''} onchange="(function(){const qs=state.builderQuestions;const s=qs[${idx}].statements.slice();s[${si}]=Object.assign({},s[${si}],{correct:true});qs[${idx}]=Object.assign({},qs[${idx}],{statements:s});render();})()">True</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="radio" name="stateset-${idx}-${si}" ${st.correct===false?'checked':''} onchange="(function(){const qs=state.builderQuestions;const s=qs[${idx}].statements.slice();s[${si}]=Object.assign({},s[${si}],{correct:false});qs[${idx}]=Object.assign({},qs[${idx}],{statements:s});render();})()">False</label>
+          ${q.statements.length>1 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const s=qs[${idx}].statements.slice();s.splice(${si},1);qs[${idx}]=Object.assign({},qs[${idx}],{statements:s});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const s=qs[${idx}].statements.slice();s.push({text:'',correct:true});qs[${idx}]=Object.assign({},qs[${idx}],{statements:s});render();})()">+ Add statement</button>
+      <div class="meta" style="margin-top:8px;">Students must get every statement right for the question to count correct.</div>
+      ${renderManualGradeToggle(idx, q)}
+    </div>`;
+  }
+  if(q.type==='rating'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge rating">Rating scale</span><span class="qtype-badge manual">Manual grade</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="opt-row">
+        <div class="field" style="margin-bottom:0;flex:1;"><label>Low label</label>
+          <input type="text" value="${esc(q.minLabel)}" oninput="updateBuilderQuestion(${idx},{minLabel:this.value})">
+        </div>
+        <div class="field" style="margin-bottom:0;flex:1;"><label>High label</label>
+          <input type="text" value="${esc(q.maxLabel)}" oninput="updateBuilderQuestion(${idx},{maxLabel:this.value})">
+        </div>
+      </div>
+      <div class="meta">A 1–5 scale — there's no single right answer, so you review and mark it yourself.</div>
+    </div>`;
+  }
+  if(q.type==='rubric'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge rubric">Essay with rubric</span><span class="qtype-badge manual">Manual grade</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="meta" style="margin-bottom:8px;">Rubric criteria (shown to you as a checklist while grading — for reference only)</div>
+      ${q.criteria.map((c,ci)=>`
+        <div class="opt-row">
+          <input type="text" placeholder="Criterion, e.g. Content" style="flex:2" value="${esc(c.label)}" oninput="(function(){const qs=state.builderQuestions;const cr=qs[${idx}].criteria.slice();cr[${ci}]=Object.assign({},cr[${ci}],{label:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{criteria:cr});}).call(this)">
+          <input type="number" min="0" step="1" placeholder="Points" style="flex:1" value="${esc(c.points)}" oninput="(function(){const qs=state.builderQuestions;const cr=qs[${idx}].criteria.slice();cr[${ci}]=Object.assign({},cr[${ci}],{points:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{criteria:cr});}).call(this)">
+          ${q.criteria.length>1 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const cr=qs[${idx}].criteria.slice();cr.splice(${ci},1);qs[${idx}]=Object.assign({},qs[${idx}],{criteria:cr});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const cr=qs[${idx}].criteria.slice();cr.push({label:'',points:10});qs[${idx}]=Object.assign({},qs[${idx}],{criteria:cr});render();})()">+ Add criterion</button>
+    </div>`;
+  }
+  if(q.type==='code'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge code">Code answer</span><span class="qtype-badge manual">Manual grade</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="field" style="margin-bottom:4px;"><label>Starter code (optional — shown to students to complete)</label>
+        <textarea rows="3" class="mono" oninput="updateBuilderQuestion(${idx},{starterCode:this.value})">${esc(q.starterCode||'')}</textarea>
+      </div>
+      <div class="meta">Students get a code editor box — you review their code by hand after they submit.</div>
+    </div>`;
+  }
+  if(q.type==='fileupload'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge fileupload">File upload answer</span><span class="qtype-badge manual">Manual grade</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="meta">Students attach a file (photo of work, document, etc.) as their answer — you review and grade it by hand.</div>
+    </div>`;
+  }
+  if(q.type==='allocation'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge allocation">Point allocation</span>${q.manualGrade?'<span class="qtype-badge manual">Manual grade</span>':''}
+      <div class="field"><label>Instructions</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="field" style="max-width:160px;"><label>Total to allocate</label>
+        <input type="number" min="1" step="1" value="${esc(q.total)}" oninput="updateBuilderQuestion(${idx},{total:this.value})">
+      </div>
+      <div class="meta" style="margin-bottom:8px;">Each item's ideal share and how far off students may be and still count correct. Targets should add up to the total above.</div>
+      ${q.items.map((item,ii)=>`
+        <div class="opt-row">
+          <input type="text" placeholder="Item ${ii+1}" style="flex:2" value="${esc(item.label)}" oninput="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it[${ii}]=Object.assign({},it[${ii}],{label:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{items:it});}).call(this)">
+          <input type="number" step="1" placeholder="Target" style="flex:1" value="${esc(item.target)}" oninput="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it[${ii}]=Object.assign({},it[${ii}],{target:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{items:it});}).call(this)">
+          <input type="number" min="0" step="1" placeholder="±Tolerance" style="flex:1" value="${esc(item.tolerance)}" oninput="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it[${ii}]=Object.assign({},it[${ii}],{tolerance:this.value});qs[${idx}]=Object.assign({},qs[${idx}],{items:it});}).call(this)">
+          ${q.items.length>2 ? `<button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it.splice(${ii},1);qs[${idx}]=Object.assign({},qs[${idx}],{items:it});render();})()">✕</button>` : ''}
+        </div>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it.push({label:'',target:0,tolerance:5});qs[${idx}]=Object.assign({},qs[${idx}],{items:it});render();})()">+ Add item</button>
+      ${renderManualGradeToggle(idx, q)}
+    </div>`;
+  }
+  if(q.type==='audio'){
+    return `<div class="qcard">
+      <button class="remove-q" onclick="removeBuilderQuestion(${idx})">Remove ✕</button>
+      <span class="qtype-badge audio">Audio response</span><span class="qtype-badge manual">Manual grade</span>
+      <div class="field"><label>Question ${idx+1}</label>
+        <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
+      </div>
+      <div class="meta">Students record a short clip with their microphone — you listen and grade it by hand.</div>
     </div>`;
   }
   return `<div class="qcard">
@@ -2073,6 +2443,103 @@ function renderTakeTest(){
         <textarea rows="6" placeholder="Write your answer"
           oninput="updateTextAnswer(${i}, this.value)" onblur="render()">${esc(val)}</textarea>
       </div>`;
+  } else if(q.type==='cloze'){
+    const answers = state.takingAnswers[i] || [];
+    qBody = q.blanks.map((b,bi)=>`
+      <div class="field">
+        <label>Blank ${bi+1}</label>
+        <input type="text" placeholder="Type your answer" value="${esc(answers[bi]||'')}"
+          oninput="updateClozeBlank(${i},${bi},this.value)" onblur="render()">
+      </div>
+    `).join('');
+  } else if(q.type==='dropdowncloze'){
+    const answers = state.takingAnswers[i] || [];
+    qBody = q.blanks.map((b,bi)=>{
+      const opts = (b.options||'').split(',').map(o=>o.trim()).filter(Boolean);
+      return `
+      <div class="field">
+        <label>Blank ${bi+1}</label>
+        <select onchange="selectDropdownCloze(${i},${bi},this.value)">
+          <option value="">Choose…</option>
+          ${opts.map(o=>`<option value="${esc(o)}" ${answers[bi]===o?'selected':''}>${esc(o)}</option>`).join('')}
+        </select>
+      </div>`;
+    }).join('');
+  } else if(q.type==='categorize'){
+    const answers = state.takingAnswers[i] || [];
+    qBody = q.items.map((item,ii)=>`
+      <div class="opt-row">
+        <span style="flex:1;">${esc(item.label)}</span>
+        <select onchange="selectCategorizeItem(${i},${ii},this.value)">
+          <option value="">Choose category…</option>
+          ${q.categories.map((cat,ci)=>`<option value="${ci}" ${answers[ii]===ci?'selected':''}>${esc(cat)}</option>`).join('')}
+        </select>
+      </div>
+    `).join('');
+  } else if(q.type==='stateset'){
+    const answers = state.takingAnswers[i] || [];
+    qBody = q.statements.map((st,si)=>`
+      <div class="opt-row" style="align-items:center;">
+        <span style="flex:1;">${esc(st.text)}</span>
+        <div class="choice-row ${answers[si]===true?'selected':''}" style="margin:0;padding:8px 14px;" onclick="selectStatementAnswer(${i},${si},true)">True</div>
+        <div class="choice-row ${answers[si]===false?'selected':''}" style="margin:0;padding:8px 14px;" onclick="selectStatementAnswer(${i},${si},false)">False</div>
+      </div>
+    `).join('');
+  } else if(q.type==='rating'){
+    const val = state.takingAnswers[i];
+    const opts = [];
+    for(let v=q.scaleMin; v<=q.scaleMax; v++) opts.push(v);
+    qBody = `
+      <div class="meta" style="display:flex;justify-content:space-between;">
+        <span>${esc(q.minLabel||'')}</span><span>${esc(q.maxLabel||'')}</span>
+      </div>
+      <div class="rating-row">
+        ${opts.map(v=>`<div class="rating-opt ${val===v?'selected':''}" onclick="selectRating(${i},${v})">${v}</div>`).join('')}
+      </div>
+    `;
+  } else if(q.type==='rubric'){
+    const val = state.takingAnswers[i] || '';
+    qBody = `
+      <div class="field">
+        <textarea rows="7" placeholder="Write your answer"
+          oninput="updateTextAnswer(${i}, this.value)" onblur="render()">${esc(val)}</textarea>
+      </div>`;
+  } else if(q.type==='code'){
+    const val = state.takingAnswers[i]!==undefined ? state.takingAnswers[i] : (q.starterCode||'');
+    qBody = `
+      <div class="field">
+        <textarea rows="8" class="mono" placeholder="Write your code"
+          oninput="updateTextAnswer(${i}, this.value)" onblur="render()">${esc(val)}</textarea>
+      </div>`;
+  } else if(q.type==='fileupload'){
+    const f = state.takingAnswers[i];
+    qBody = `
+      <div class="field">
+        <input type="file" onchange="handleExamFileAnswer(${i}, this)">
+      </div>
+      ${f ? `<div class="meta">Selected: ${esc(f.name)} (${formatFileSize(f.size)})</div>` : `<div class="meta">Max file size ${formatFileSize(MAX_PROJECT_FILE_BYTES)}.</div>`}
+    `;
+  } else if(q.type==='allocation'){
+    const answers = state.takingAnswers[i] || {};
+    const sum = q.items.reduce((s,_,ii)=> s + (parseFloat(answers[ii])||0), 0);
+    qBody = q.items.map((item,ii)=>`
+      <div class="opt-row">
+        <span style="flex:1;">${esc(item.label)}</span>
+        <input type="number" step="any" style="max-width:110px;" value="${answers[ii]!==undefined?esc(answers[ii]):''}"
+          oninput="updateAllocationItem(${i},${ii},this.value)" onblur="render()">
+      </div>
+    `).join('') + `<div class="meta" style="margin-top:8px;">Total: ${sum} / ${q.total}</div>`;
+  } else if(q.type==='audio'){
+    const rec = state.takingAnswers[i];
+    const isRecording = audioRecordingQIndex===i;
+    qBody = `
+      <div style="margin-bottom:10px;">
+        ${isRecording
+          ? `<button class="btn btn-danger rec-btn" onclick="stopAudioRecording()"><span class="rec-dot"></span> Stop recording</button>`
+          : `<button class="btn btn-outline rec-btn" onclick="startAudioRecording(${i})">🎙 ${rec?'Record again':'Start recording'}</button>`}
+      </div>
+      ${rec ? `<audio controls src="${rec.dataUrl}" style="width:100%;"></audio>` : `<div class="meta">No recording yet.</div>`}
+    `;
   }
 
   let canSubmitQ;
@@ -2080,7 +2547,19 @@ function renderTakeTest(){
   else if(q.type==='order') canSubmitQ = true;
   else if(q.type==='msq') canSubmitQ = (state.takingAnswers[i]||[]).length>0;
   else if(q.type==='numeric') canSubmitQ = state.takingAnswers[i]!==undefined && String(state.takingAnswers[i]).trim()!=='' && !isNaN(parseFloat(state.takingAnswers[i]));
-  else if(q.type==='short' || q.type==='long') canSubmitQ = !!(state.takingAnswers[i] && String(state.takingAnswers[i]).trim());
+  else if(q.type==='short' || q.type==='long' || q.type==='rubric' || q.type==='code') canSubmitQ = !!(state.takingAnswers[i] && String(state.takingAnswers[i]).trim());
+  else if(q.type==='cloze') canSubmitQ = q.blanks.every((b,bi)=>{ const a=state.takingAnswers[i]||[]; return a[bi] && String(a[bi]).trim(); });
+  else if(q.type==='dropdowncloze') canSubmitQ = q.blanks.every((b,bi)=>{ const a=state.takingAnswers[i]||[]; return !!a[bi]; });
+  else if(q.type==='categorize') canSubmitQ = q.items.every((it,ii)=>{ const a=state.takingAnswers[i]||[]; return a[ii]!==undefined; });
+  else if(q.type==='stateset') canSubmitQ = q.statements.every((st,si)=>{ const a=state.takingAnswers[i]||[]; return a[si]===true || a[si]===false; });
+  else if(q.type==='rating') canSubmitQ = state.takingAnswers[i]!==undefined;
+  else if(q.type==='fileupload' || q.type==='audio') canSubmitQ = !!(state.takingAnswers[i] && state.takingAnswers[i].dataUrl);
+  else if(q.type==='allocation'){
+    const a = state.takingAnswers[i] || {};
+    const allFilled = q.items.every((it,ii)=> a[ii]!==undefined && String(a[ii]).trim()!=='' && !isNaN(parseFloat(a[ii])));
+    const sum = q.items.reduce((s,_,ii)=> s + (parseFloat(a[ii])||0), 0);
+    canSubmitQ = allFilled && Math.abs(sum - parseFloat(q.total)) < 0.001;
+  }
   else canSubmitQ = answered;
 
   return `
@@ -2154,19 +2633,36 @@ function renderTestResult(){
   ${sub.studentName ? `<div class="meta" style="margin:-14px 0 18px;">${esc(sub.studentName)} · ${esc(sub.studentClass)} · No. ${esc(sub.studentNumber)}</div>` : ''}
   <div class="score-hero">
     <div class="num">${sub.score}<span>/${sub.total}</span></div>
-    <div class="meta" style="margin-top:6px;">${pct===null ? 'Awaiting grading' : pct+'% correct'}${pendingCount>0 ? ` · ${pendingCount} response${pendingCount===1?'':'s'} awaiting review` : ''}</div>
+    <div class="meta" style="margin-top:6px;">${pct===null ? 'Awaiting grading' : pct+'% correct'}${pendingCount>0 ? ` · ${pendingCount} response${pendingCount===1?'':'s'} awaiting review` : ''}${sub.scoreOverridden ? ' · final score set by teacher' : ''}</div>
   </div>
+  ${state.role==='teacher' ? `
+  <div class="card" style="margin-bottom:20px;max-width:340px;">
+    <div class="field" style="margin-bottom:10px;"><label>Override final score</label>
+      <input id="score-override-input" type="number" min="0" step="any" value="${esc(sub.score)}">
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="overrideSubmissionScore('${state.resultSubmissionId}')">Set final score</button>
+  </div>` : ''}
   ${sub.detail.map((d,i)=>{
     const preview = answerPreview(d.question, d.answer);
     const isPending = d.correct===null;
     const tagLabel = isPending ? 'Awaiting review' : (d.correct?'Correct':'Incorrect');
     const rowClass = isPending ? 'pending' : (d.correct?'correct':'incorrect');
+    let answerBlock = `<div class="meta" style="margin-top:4px;">Answer: ${esc(preview)}</div>`;
+    if(d.question.type==='code'){
+      answerBlock = `<pre class="mono" style="background:var(--paper-dim);border-radius:8px;padding:10px 12px;margin-top:6px;white-space:pre-wrap;font-size:12.5px;">${esc(d.answer && String(d.answer).trim() ? d.answer : '(no answer)')}</pre>`;
+    } else if((d.question.type==='fileupload' || d.question.type==='audio') && d.answer && d.answer.dataUrl){
+      answerBlock = d.question.type==='audio'
+        ? `<div style="margin-top:6px;"><audio controls src="${d.answer.dataUrl}" style="width:100%;"></audio></div>`
+        : `<div style="margin-top:6px;"><a href="${d.answer.dataUrl}" download="${esc(d.answer.name)}"><button class="btn btn-outline btn-sm">⬇ ${esc(d.answer.name)} (${formatFileSize(d.answer.size)})</button></a></div>`;
+    }
     return `
     <div class="review-row ${rowClass}">
       <div class="tag">${tagLabel} · Question ${i+1}</div>
       <div style="margin-top:4px;font-weight:600;">${esc(d.question.text)}</div>
-      <div class="meta" style="margin-top:4px;">Answer: ${esc(preview)}</div>
+      ${answerBlock}
       ${d.question.type==='long' && d.question.modelAnswer && state.role==='teacher' ? `<div class="meta" style="margin-top:2px;">Model answer: ${esc(d.question.modelAnswer)}</div>` : ''}
+      ${d.question.type==='rubric' && d.question.criteria && state.role==='teacher' ? `
+        <div class="meta" style="margin-top:6px;"><strong>Rubric:</strong> ${d.question.criteria.map(c=>`${esc(c.label)} (${esc(c.points)} pts)`).join(', ')}</div>` : ''}
       ${isPending && state.role==='teacher' ? `
         <div style="margin-top:10px;display:flex;gap:8px;">
           <button class="btn btn-outline btn-sm" onclick="gradeLongAnswer('${state.resultSubmissionId}',${i},true)">Mark correct</button>
