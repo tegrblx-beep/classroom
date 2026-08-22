@@ -196,6 +196,49 @@
   .add-q-bar{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0;}
   .manual-grade-toggle{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);}
 
+  /* ---- rich text toolbar (essay / rubric answers) ---- */
+  .rte-toolbar{
+    display:flex;flex-wrap:wrap;align-items:center;gap:4px;
+    background:var(--paper-dim);border:1px solid var(--line);border-bottom:none;
+    border-radius:9px 9px 0 0;padding:7px 8px;
+  }
+  .rte-sep{width:1px;align-self:stretch;background:var(--line);margin:2px 3px;}
+  .rte-select{
+    border:1px solid var(--line);border-radius:6px;padding:5px 6px;font-size:12.5px;
+    background:#fff;color:var(--ink);max-width:120px;
+  }
+  .rte-btn{
+    background:#fff;border:1px solid var(--line);border-radius:6px;
+    min-width:28px;height:28px;padding:0 6px;font-size:13px;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;color:var(--ink);
+  }
+  .rte-btn:hover{border-color:var(--marker-blue);color:var(--marker-blue);}
+  .rte-btn.active{border-color:var(--marker-blue);background:var(--marker-blue-dim);color:var(--marker-blue);}
+  .frac{display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;font-size:0.82em;line-height:1.15;margin:0 2px;}
+  .frac .fracnum{border-bottom:1.4px solid currentColor;padding:0 3px;}
+  .frac .fracden{padding:0 3px;}
+  .sqrt{white-space:nowrap;}
+  .sqrt .rad{border-top:1.4px solid currentColor;padding:2px 3px 0;margin-left:1px;}
+  .rte-color-label{
+    display:flex;align-items:center;gap:3px;font-size:12.5px;font-weight:700;color:var(--ink);
+    border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:#fff;
+  }
+  .rte-color-input{
+    width:18px;height:18px;padding:0;border:none;background:none;cursor:pointer;
+  }
+  .rte-editor{
+    min-height:150px;border:1px solid var(--line);border-radius:0 0 9px 9px;
+    padding:12px 14px;background:#fff;font-size:14px;line-height:1.6;color:var(--ink);
+    outline:none;
+  }
+  .rte-editor:focus{outline:2px solid var(--marker-blue);outline-offset:-1px;border-color:var(--marker-blue);}
+  .rte-editor:empty:before{content:attr(data-placeholder);color:var(--muted);}
+  .rte-editor ul,.rte-content ul{margin:6px 0 6px 22px;}
+  .rte-editor ol,.rte-content ol{margin:6px 0 6px 22px;}
+  .rte-editor h1,.rte-content h1{font-size:22px;margin:10px 0 6px;}
+  .rte-editor h2,.rte-content h2{font-size:19px;margin:8px 0 6px;}
+  .rte-editor h3,.rte-content h3{font-size:16px;margin:8px 0 4px;}
+
   .progress-track{display:flex;gap:5px;margin-bottom:24px;}
   .progress-track .seg{height:5px;flex:1;background:var(--line);border-radius:3px;}
   .progress-track .seg.done{background:var(--chalk-dark);}
@@ -547,7 +590,8 @@ function answerPreview(q, ans){
   if(q.type==='mcq') return (ans!=null && q.options[ans]!==undefined) ? q.options[ans] : '(no answer)';
   if(q.type==='tf') return ans===true ? 'True' : ans===false ? 'False' : '(no answer)';
   if(q.type==='match') return (ans && ans.length) ? ans.map(p=>`${q.terms[p.left]} → ${q.defs[p.right]}`).join('; ') : '(no answer)';
-  if(q.type==='short' || q.type==='long' || q.type==='rubric' || q.type==='code') return (ans && String(ans).trim()) ? ans : '(no answer)';
+  if(q.type==='short' || q.type==='code') return (ans && String(ans).trim()) ? ans : '(no answer)';
+  if(q.type==='long' || q.type==='rubric') return (ans && stripHtml(ans)) ? stripHtml(ans) : '(no answer)';
   if(q.type==='msq') return (ans && ans.length) ? ans.map(oi=>q.options[oi]).join(', ') : '(no answer)';
   if(q.type==='order') return (ans && ans.length) ? ans.map(ii=>q.items[ii]).join(' → ') : '(no answer)';
   if(q.type==='numeric') return (ans!==undefined && ans!==null && String(ans).trim()!=='') ? String(ans) : '(no answer)';
@@ -975,6 +1019,211 @@ function startIdentifiedTest(){
 
 function updateTextAnswer(qIndex, val){
   state.takingAnswers = Object.assign({}, state.takingAnswers, {[qIndex]: val});
+}
+
+/* =========================================================
+   RICH TEXT EDITOR (Google-Docs-style toolbar for essay /
+   rubric long-answer responses). Uses execCommand on a
+   contenteditable div — fine for this prototype's scope.
+   ========================================================= */
+function stripHtml(html){
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html || '';
+  return (tmp.textContent || tmp.innerText || '').trim();
+}
+
+/* ---- selection save/restore ----
+   Only needed for controls that MUST steal native browser focus to
+   work at all (a <select> dropdown, a native <input type=color>
+   picker) — that focus change would otherwise drop the text
+   selection the command is supposed to act on. Plain toolbar
+   buttons avoid this entirely (see renderRichToolbar) by
+   preventing the mousedown default, so focus never leaves the
+   editor for them in the first place — that's the more reliable
+   path and why they no longer misfire. */
+let rteSavedRange = null;
+let rteSavedQIndex = null;
+let rteStyleWithCssReady = false;
+function rteSaveSelection(qIndex){
+  const editor = document.getElementById('rte-'+qIndex);
+  if(!editor) return;
+  const sel = window.getSelection();
+  if(sel && sel.rangeCount>0 && editor.contains(sel.anchorNode)){
+    rteSavedRange = sel.getRangeAt(0).cloneRange();
+  } else {
+    // editor was never focused yet (e.g. first click lands on the toolbar) —
+    // fall back to placing the cursor at the end of whatever's there.
+    const r = document.createRange();
+    r.selectNodeContents(editor);
+    r.collapse(false);
+    rteSavedRange = r;
+  }
+  rteSavedQIndex = qIndex;
+}
+function rteFocusAndRestore(qIndex){
+  const el = document.getElementById('rte-'+qIndex);
+  if(!el) return;
+  el.focus();
+  if(rteSavedRange && rteSavedQIndex===qIndex){
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    try{ sel.addRange(rteSavedRange); }catch(e){ /* stale range, ignore */ }
+  }
+}
+function ensureStyleWithCss(){
+  // Without this, foreColor/hiliteColor are unreliable (or no-ops) in
+  // several browsers — it makes execCommand write real CSS instead of
+  // legacy <font>/<strike> tags.
+  if(rteStyleWithCssReady) return;
+  try{ document.execCommand('styleWithCSS', false, true); rteStyleWithCssReady = true; }catch(e){}
+}
+function richInput(qIndex, el){
+  state.takingAnswers = Object.assign({}, state.takingAnswers, {[qIndex]: el.innerHTML});
+}
+function richAfterCommand(qIndex){
+  const el = document.getElementById('rte-'+qIndex);
+  if(el) richInput(qIndex, el);
+  richUpdateToolbarState(qIndex);
+}
+/* Plain toolbar button (bold, italic, align, lists, superscript,
+   clear formatting…). Focus never left the editor — mousedown on the
+   button was prevented — so this just runs the command directly on
+   whatever's currently selected (or, if the selection is collapsed,
+   it toggles the style for text typed from here on — that's native
+   execCommand behavior). */
+function richCommand(qIndex, cmd, val){
+  ensureStyleWithCss();
+  try{ document.execCommand(cmd, false, val || null); }catch(e){ /* unsupported command, ignore */ }
+  richAfterCommand(qIndex);
+}
+/* Variant for controls that DID need to steal focus (paragraph-style
+   select, symbol select) — reclaims the editor and the saved
+   selection first. */
+function richCommandFromControl(qIndex, cmd, val){
+  rteFocusAndRestore(qIndex);
+  richCommand(qIndex, cmd, val);
+}
+function richColorCommand(qIndex, cmd, val){
+  rteFocusAndRestore(qIndex);
+  ensureStyleWithCss();
+  let ok = false;
+  try{ ok = document.execCommand(cmd, false, val); }catch(e){ ok = false; }
+  if(!ok && cmd==='hiliteColor'){
+    try{ document.execCommand('backColor', false, val); }catch(e){}
+  }
+  richAfterCommand(qIndex);
+}
+function richInsertHtml(qIndex, html){
+  ensureStyleWithCss();
+  try{ document.execCommand('insertHTML', false, html); }catch(e){}
+  richAfterCommand(qIndex);
+}
+function richInsertSymbol(qIndex, selectEl){
+  const sym = selectEl.value;
+  if(sym){
+    rteFocusAndRestore(qIndex);
+    richInsertHtml(qIndex, esc(sym));
+  }
+  selectEl.value = '';
+}
+function richInsertFraction(qIndex){
+  richInsertHtml(qIndex, '<span class="frac">&#8203;<span class="fracnum">a</span><span class="fracden">b</span></span>&#8203; ');
+}
+function richInsertSqrt(qIndex){
+  richInsertHtml(qIndex, '<span class="sqrt">√<span class="rad">x</span></span>&#8203; ');
+}
+
+/* ---- toolbar "pressed" state (bold/italic/... highlighted while active) ---- */
+function richUpdateToolbarState(qIndex){
+  const toolbar = document.querySelector('.rte-toolbar[data-for="'+qIndex+'"]');
+  if(!toolbar) return;
+  ['bold','italic','underline','strikeThrough','insertUnorderedList','insertOrderedList',
+   'justifyLeft','justifyCenter','justifyRight','justifyFull','superscript','subscript'].forEach(cmd=>{
+    const btn = toolbar.querySelector('[data-cmd="'+cmd+'"]');
+    if(!btn) return;
+    let active = false;
+    try{ active = document.queryCommandState(cmd); }catch(e){ active = false; }
+    btn.classList.toggle('active', !!active);
+  });
+  const select = toolbar.querySelector('.rte-select');
+  if(select){
+    let block = '';
+    try{ block = (document.queryCommandValue('formatBlock')||'').toLowerCase(); }catch(e){}
+    select.value = (block==='h1'||block==='h2'||block==='h3') ? block : 'p';
+  }
+}
+// Keep toolbar button states in sync as the cursor moves (click, arrow keys, etc).
+document.addEventListener('selectionchange', function(){
+  const sel = window.getSelection();
+  if(!sel || sel.rangeCount===0 || !sel.anchorNode) return;
+  const node = sel.anchorNode;
+  const el = node.nodeType===1 ? node : node.parentElement;
+  const editor = el && el.closest ? el.closest('.rte-editor') : null;
+  if(!editor) return;
+  richUpdateToolbarState(editor.id.replace('rte-',''));
+});
+
+const RTE_SYMBOLS = ['√','π','±','×','÷','≤','≥','≠','≈','∞','°','∑','∫','½','¼','¾','²','³'];
+function renderRichToolbar(qIndex){
+  // Plain command buttons: preventDefault on mousedown/pointerdown so
+  // the button never steals focus from the editor — the native text
+  // selection (or cursor position) is left completely untouched, which
+  // is what makes these reliably apply to the selection, or — with a
+  // collapsed cursor and no selection — toggle formatting for whatever
+  // you type next, exactly like Google Docs.
+  const btn = (cmd, label, title)=>`<button type="button" class="rte-btn" data-cmd="${cmd}" title="${title}"
+      onmousedown="event.preventDefault()" onpointerdown="event.preventDefault()"
+      onclick="richCommand(${qIndex},'${cmd}')">${label}</button>`;
+  const actionBtn = (fn, label, title)=>`<button type="button" class="rte-btn" title="${title}"
+      onmousedown="event.preventDefault()" onpointerdown="event.preventDefault()"
+      onclick="${fn}(${qIndex})">${label}</button>`;
+  return `
+  <div class="rte-toolbar" data-for="${qIndex}">
+    <select class="rte-select" title="Paragraph style"
+      onmousedown="rteSaveSelection(${qIndex})"
+      onchange="richCommandFromControl(${qIndex},'formatBlock',this.value);this.blur();">
+      <option value="p">Normal text</option>
+      <option value="h1">Heading 1</option>
+      <option value="h2">Heading 2</option>
+      <option value="h3">Heading 3</option>
+    </select>
+    <span class="rte-sep"></span>
+    ${btn('bold','<b>B</b>','Bold')}
+    ${btn('italic','<i>I</i>','Italic')}
+    ${btn('underline','<u>U</u>','Underline')}
+    ${btn('strikeThrough','<s>S</s>','Strikethrough')}
+    <span class="rte-sep"></span>
+    ${btn('justifyLeft','≡◧','Align left')}
+    ${btn('justifyCenter','≡','Align center')}
+    ${btn('justifyRight','◨≡','Align right')}
+    ${btn('justifyFull','☰','Justify')}
+    <span class="rte-sep"></span>
+    ${btn('insertUnorderedList','• ≡','Bulleted list')}
+    ${btn('insertOrderedList','1.≡','Numbered list')}
+    <span class="rte-sep"></span>
+    <label class="rte-color-label" title="Text color">A
+      <input type="color" class="rte-color-input" value="#26302a"
+        onmousedown="rteSaveSelection(${qIndex})"
+        onchange="richColorCommand(${qIndex},'foreColor',this.value)">
+    </label>
+    <label class="rte-color-label" title="Highlight color">🖌
+      <input type="color" class="rte-color-input" value="#faf0dc"
+        onmousedown="rteSaveSelection(${qIndex})"
+        onchange="richColorCommand(${qIndex},'hiliteColor',this.value)">
+    </label>
+    <span class="rte-sep"></span>
+    ${btn('superscript','x²','Superscript')}
+    ${btn('subscript','x₂','Subscript')}
+    ${actionBtn('richInsertFraction','a⁄b','Insert fraction')}
+    ${actionBtn('richInsertSqrt','√x','Insert square root')}
+    <select class="rte-select" title="Insert math symbol" style="max-width:56px;"
+      onmousedown="rteSaveSelection(${qIndex})" onchange="richInsertSymbol(${qIndex}, this)">
+      <option value="">Symbol…</option>
+      ${RTE_SYMBOLS.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')}
+    </select>
+    <span class="rte-sep"></span>
+    ${btn('removeFormat','Tx','Clear formatting (select text first)')}
+  </div>`;
 }
 
 function exitTakeTest(){
@@ -2438,11 +2687,9 @@ function renderTakeTest(){
       </div>`;
   } else if(q.type==='long'){
     const val = state.takingAnswers[i] || '';
-    qBody = `
-      <div class="field">
-        <textarea rows="6" placeholder="Write your answer"
-          oninput="updateTextAnswer(${i}, this.value)" onblur="render()">${esc(val)}</textarea>
-      </div>`;
+    qBody = renderRichToolbar(i) + `
+      <div id="rte-${i}" class="rte-editor" contenteditable="true" data-placeholder="Write your answer"
+        oninput="richInput(${i}, this)" onfocus="richUpdateToolbarState(${i})" onblur="render()">${val}</div>`;
   } else if(q.type==='cloze'){
     const answers = state.takingAnswers[i] || [];
     qBody = q.blanks.map((b,bi)=>`
@@ -2499,11 +2746,9 @@ function renderTakeTest(){
     `;
   } else if(q.type==='rubric'){
     const val = state.takingAnswers[i] || '';
-    qBody = `
-      <div class="field">
-        <textarea rows="7" placeholder="Write your answer"
-          oninput="updateTextAnswer(${i}, this.value)" onblur="render()">${esc(val)}</textarea>
-      </div>`;
+    qBody = renderRichToolbar(i) + `
+      <div id="rte-${i}" class="rte-editor" contenteditable="true" data-placeholder="Write your answer"
+        oninput="richInput(${i}, this)" onfocus="richUpdateToolbarState(${i})" onblur="render()">${val}</div>`;
   } else if(q.type==='code'){
     const val = state.takingAnswers[i]!==undefined ? state.takingAnswers[i] : (q.starterCode||'');
     qBody = `
@@ -2547,7 +2792,8 @@ function renderTakeTest(){
   else if(q.type==='order') canSubmitQ = true;
   else if(q.type==='msq') canSubmitQ = (state.takingAnswers[i]||[]).length>0;
   else if(q.type==='numeric') canSubmitQ = state.takingAnswers[i]!==undefined && String(state.takingAnswers[i]).trim()!=='' && !isNaN(parseFloat(state.takingAnswers[i]));
-  else if(q.type==='short' || q.type==='long' || q.type==='rubric' || q.type==='code') canSubmitQ = !!(state.takingAnswers[i] && String(state.takingAnswers[i]).trim());
+  else if(q.type==='short' || q.type==='code') canSubmitQ = !!(state.takingAnswers[i] && String(state.takingAnswers[i]).trim());
+  else if(q.type==='long' || q.type==='rubric') canSubmitQ = !!(state.takingAnswers[i] && stripHtml(state.takingAnswers[i]));
   else if(q.type==='cloze') canSubmitQ = q.blanks.every((b,bi)=>{ const a=state.takingAnswers[i]||[]; return a[bi] && String(a[bi]).trim(); });
   else if(q.type==='dropdowncloze') canSubmitQ = q.blanks.every((b,bi)=>{ const a=state.takingAnswers[i]||[]; return !!a[bi]; });
   else if(q.type==='categorize') canSubmitQ = q.items.every((it,ii)=>{ const a=state.takingAnswers[i]||[]; return a[ii]!==undefined; });
@@ -2650,6 +2896,8 @@ function renderTestResult(){
     let answerBlock = `<div class="meta" style="margin-top:4px;">Answer: ${esc(preview)}</div>`;
     if(d.question.type==='code'){
       answerBlock = `<pre class="mono" style="background:var(--paper-dim);border-radius:8px;padding:10px 12px;margin-top:6px;white-space:pre-wrap;font-size:12.5px;">${esc(d.answer && String(d.answer).trim() ? d.answer : '(no answer)')}</pre>`;
+    } else if((d.question.type==='long' || d.question.type==='rubric') && d.answer && stripHtml(d.answer)){
+      answerBlock = `<div class="mdesc rte-content" style="margin-top:6px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fff;">${d.answer}</div>`;
     } else if((d.question.type==='fileupload' || d.question.type==='audio') && d.answer && d.answer.dataUrl){
       answerBlock = d.question.type==='audio'
         ? `<div style="margin-top:6px;"><audio controls src="${d.answer.dataUrl}" style="width:100%;"></audio></div>`
