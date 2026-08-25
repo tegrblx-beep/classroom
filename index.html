@@ -389,7 +389,35 @@ function idbSet(key, value){
 }
 
 function blankData(){
-  return { classrooms:{}, subjects:{}, materials:{}, tests:{}, submissions:{}, projects:{}, projectSubmissions:{}, announcements:{} };
+  return {
+    classrooms:{},
+    subjects:{},
+    materials:{},
+    tests:{},
+    submissions:{},
+    projects:{},
+    projectSubmissions:{},
+    announcements:{},
+    students:{},
+    attendance:{},
+    assignments:{},
+    assignmentSubmissions:{},
+    discussions:{},
+    discussionReplies:{},
+    calendar:{},
+    schedules:{},
+    lessonPlans:{},
+    homework:{},
+    homeworkSubmissions:{},
+    studyGroups:{},
+    flashcards:{},
+    bookmarks:{},
+    todoItems:{},
+    certificates:{},
+    gradeWeights:{},
+    gradeComments:{},
+    progressReports:{}
+  };
 }
 
 async function loadData(){
@@ -502,7 +530,60 @@ let state = {
   projectGradeLookupId:null,
   projectGradeLookupIdentity:{name:'', cls:'', number:''},
   projectGradeLookupError:'',
-  projectResultSubmissionId:null
+  projectResultSubmissionId:null,
+
+  /* ---- attendance ---- */
+  attendanceClassroomId:null,
+  attendanceDate:new Date().toISOString().split('T')[0],
+  attendanceEditingDate:null,
+  newStudentName:'',
+  newStudentClass:'',
+  newStudentNumber:'',
+
+  /* ---- gradebook ---- */
+  gradebookClassroomId:null,
+  gradebookSubjectId:null,
+
+  /* ---- announcements ---- */
+  announcementClassroomId:null,
+
+  /* ---- assignments ---- */
+  assignmentClassroomId:null,
+  assignmentSubjectId:null,
+  newAssignmentTitle:'',
+  newAssignmentDesc:'',
+  newAssignmentDueDate:'',
+
+  /* ---- calendar & schedule ---- */
+  calendarClassroomId:null,
+  calendarMonth:new Date().getMonth(),
+  calendarYear:new Date().getFullYear(),
+
+  /* ---- discussions ---- */
+  discussionSubjectId:null,
+  discussionThreadId:null,
+  newDiscussionTitle:'',
+  newDiscussionText:'',
+
+  /* ---- homework ---- */
+  homeworkClassroomId:null,
+
+  /* ---- study groups ---- */
+  studyGroupClassroomId:null,
+
+  /* ---- flashcards ---- */
+  flashcardTestId:null,
+  flashcardIndex:0,
+
+  /* ---- analytics ---- */
+  analyticsClassroomId:null,
+  analyticsSubjectId:null,
+
+  /* ---- certificates ---- */
+  certificateClassroomId:null,
+
+  /* ---- grade weights ---- */
+  gradeWeightSubjectId:null
 };
 
 function setState(patch){
@@ -813,24 +894,24 @@ function startTestBuilder(subjectId, testId){
 
 function addBuilderQuestion(type){
   let q;
-  if(type==='mcq') q = {type:'mcq', text:'', options:['',''], correct:0, manualGrade:false};
-  else if(type==='tf') q = {type:'tf', text:'', correct:true, manualGrade:false};
-  else if(type==='match') q = {type:'match', text:'Match each term to its definition', terms:['',''], defs:['','']};
-  else if(type==='short') q = {type:'short', text:'', accepted:[''], manualGrade:false};
-  else if(type==='msq') q = {type:'msq', text:'', options:['','',''], correct:[0], manualGrade:false};
-  else if(type==='order') q = {type:'order', text:'', items:['','',''], manualGrade:false};
-  else if(type==='numeric') q = {type:'numeric', text:'', answer:0, tolerance:0, manualGrade:false};
-  else if(type==='cloze') q = {type:'cloze', text:'Paris is the capital of ___.', blanks:[{accepted:'Paris'}], manualGrade:false};
-  else if(type==='dropdowncloze') q = {type:'dropdowncloze', text:'Paris is the capital of ___.', blanks:[{options:'France, Spain, Italy', correct:'France'}], manualGrade:false};
-  else if(type==='categorize') q = {type:'categorize', text:'Sort each item into the correct category', categories:['Category A','Category B'], items:[{label:'', correctCategory:0}], manualGrade:false};
-  else if(type==='stateset') q = {type:'stateset', text:'Mark each statement True or False', statements:[{text:'', correct:true}], manualGrade:false};
-  else if(type==='rating') q = {type:'rating', text:'', scaleMin:1, scaleMax:5, minLabel:'Not confident', maxLabel:'Very confident', manualGrade:true};
-  else if(type==='rubric') q = {type:'rubric', text:'', criteria:[{label:'Content', points:10}], manualGrade:true};
-  else if(type==='code') q = {type:'code', text:'', starterCode:'', manualGrade:true};
-  else if(type==='fileupload') q = {type:'fileupload', text:'', manualGrade:true};
-  else if(type==='allocation') q = {type:'allocation', text:'Distribute the total across these items', items:[{label:'', target:50, tolerance:5}, {label:'', target:50, tolerance:5}], total:100, manualGrade:false};
-  else if(type==='audio') q = {type:'audio', text:'', manualGrade:true};
-  else q = {type:'long', text:'', modelAnswer:''};
+  if(type==='mcq') q = {type:'mcq', text:'', options:['',''], correct:0, manualGrade:false, maxPoints:1};
+  else if(type==='tf') q = {type:'tf', text:'', correct:true, manualGrade:false, maxPoints:1};
+  else if(type==='match') q = {type:'match', text:'Match each term to its definition', terms:['',''], defs:['',''], maxPoints:1};
+  else if(type==='short') q = {type:'short', text:'', accepted:[''], manualGrade:false, maxPoints:1};
+  else if(type==='msq') q = {type:'msq', text:'', options:['','',''], correct:[0], manualGrade:false, maxPoints:1};
+  else if(type==='order') q = {type:'order', text:'', items:['','',''], manualGrade:false, maxPoints:1};
+  else if(type==='numeric') q = {type:'numeric', text:'', answer:0, tolerance:0, manualGrade:false, maxPoints:1};
+  else if(type==='cloze') q = {type:'cloze', text:'Paris is the capital of ___.', blanks:[{accepted:'Paris'}], manualGrade:false, maxPoints:1};
+  else if(type==='dropdowncloze') q = {type:'dropdowncloze', text:'Paris is the capital of ___.', blanks:[{options:'France, Spain, Italy', correct:'France'}], manualGrade:false, maxPoints:1};
+  else if(type==='categorize') q = {type:'categorize', text:'Sort each item into the correct category', categories:['Category A','Category B'], items:[{label:'', correctCategory:0}], manualGrade:false, maxPoints:1};
+  else if(type==='stateset') q = {type:'stateset', text:'Mark each statement True or False', statements:[{text:'', correct:true}], manualGrade:false, maxPoints:1};
+  else if(type==='rating') q = {type:'rating', text:'', scaleMin:1, scaleMax:5, minLabel:'Not confident', maxLabel:'Very confident', manualGrade:true, maxPoints:1};
+  else if(type==='rubric') q = {type:'rubric', text:'', criteria:[{label:'Content', points:10}], manualGrade:true, maxPoints:1};
+  else if(type==='code') q = {type:'code', text:'', starterCode:'', manualGrade:true, maxPoints:1};
+  else if(type==='fileupload') q = {type:'fileupload', text:'', manualGrade:true, maxPoints:1};
+  else if(type==='allocation') q = {type:'allocation', text:'Distribute the total across these items', items:[{label:'', target:50, tolerance:5}, {label:'', target:50, tolerance:5}], total:100, manualGrade:false, maxPoints:1};
+  else if(type==='audio') q = {type:'audio', text:'', manualGrade:true, maxPoints:1};
+  else q = {type:'long', text:'', modelAnswer:'', maxPoints:1};
   setState({builderQuestions:[...state.builderQuestions, q]});
 }
 function removeBuilderQuestion(idx){
@@ -1362,13 +1443,17 @@ async function submitTest(){
   const settings = testSettings(test);
   const questions = (state.takingQuestions && state.takingQuestions.length) ? state.takingQuestions : test.questions;
   let score = 0;
-  const total = questions.length;
+  let totalPoints = 0;
   const detail = [];
   questions.forEach((q, i)=>{
     const ans = state.takingAnswers[i];
+    const maxPoints = q.maxPoints || 1;
+    totalPoints += maxPoints;
     let correct = false;
+    let earnedPoints = 0;
     if(q.type==='long' || q.manualGrade){
       correct = null; // needs manual grading by the teacher
+      earnedPoints = null;
     } else if(q.type==='mcq'){
       correct = ans===q.correct;
     } else if(q.type==='tf'){
@@ -1411,8 +1496,11 @@ async function submitTest(){
         return !isNaN(val) && Math.abs(val - parseFloat(it.target)) <= (parseFloat(it.tolerance)||0);
       });
     }
-    if(correct===true) score++;
-    detail.push({question:q, answer:ans, correct});
+    if(correct===true){
+      earnedPoints = maxPoints;
+      score += maxPoints;
+    }
+    detail.push({question:q, answer:ans, correct, earnedPoints, maxPoints});
   });
   const subId = uid('sub');
   DATA.submissions[subId] = {
@@ -1420,7 +1508,7 @@ async function submitTest(){
     studentName: state.takingIdentity.name,
     studentClass: state.takingIdentity.cls,
     studentNumber: state.takingIdentity.number,
-    score, total, detail,
+    score, totalPoints, detail,
     submittedAt: Date.now()
   };
   await saveData();
@@ -1435,22 +1523,53 @@ async function gradeLongAnswer(subId, qIndex, isCorrect){
   const sub = DATA.submissions[subId];
   if(!sub) return;
   const was = sub.detail[qIndex].correct;
+  const earnedPoints = sub.detail[qIndex].earnedPoints;
+  const maxPoints = sub.detail[qIndex].maxPoints || 1;
   sub.detail[qIndex].correct = isCorrect;
-  if(was!==true && isCorrect===true) sub.score++;
-  if(was===true && isCorrect===false) sub.score--;
+  if(was!==true && isCorrect===true){
+    sub.detail[qIndex].earnedPoints = maxPoints;
+    sub.score += maxPoints;
+  }
+  if(was===true && isCorrect===false){
+    sub.detail[qIndex].earnedPoints = 0;
+    sub.score -= maxPoints;
+  }
   await saveData();
   render();
   toast(isCorrect ? 'Marked correct' : 'Marked incorrect');
+}
+
+async function updateQuestionPoints(subId, qIndex){
+  const input = document.getElementById('points-input-'+qIndex);
+  if(!input) return;
+  const newPoints = parseFloat(input.value);
+  const sub = DATA.submissions[subId];
+  if(!sub) return;
+  const maxPoints = sub.detail[qIndex].maxPoints || 1;
+  if(isNaN(newPoints) || newPoints < 0 || newPoints > maxPoints){
+    toast('Enter points between 0 and ' + maxPoints);
+    return;
+  }
+  const oldPoints = sub.detail[qIndex].earnedPoints !== null ? sub.detail[qIndex].earnedPoints : 0;
+  sub.detail[qIndex].earnedPoints = newPoints;
+  sub.score = sub.score - oldPoints + newPoints;
+  if(newPoints === maxPoints) sub.detail[qIndex].correct = true;
+  else if(newPoints === 0) sub.detail[qIndex].correct = false;
+  else sub.detail[qIndex].correct = null; // partial credit
+  await saveData();
+  render();
+  toast('Points updated');
 }
 
 async function overrideSubmissionScore(subId){
   const input = document.getElementById('score-override-input');
   if(!input) return;
   const val = parseFloat(input.value);
-  if(isNaN(val) || val<0){ toast('Enter a valid score'); return; }
+  if(isNaN(val) || val<0 || val>100){ toast('Enter a valid percentage between 0 and 100'); return; }
   const sub = DATA.submissions[subId];
   if(!sub) return;
-  sub.score = val;
+  sub.score = (val / 100) * sub.totalPoints;
+  sub.scoreOverridePercentage = val;
   sub.scoreOverridden = true;
   await saveData();
   render();
@@ -1571,6 +1690,324 @@ function submitProjectGradeLookup(){
 }
 
 /* =========================================================
+   ATTENDANCE SYSTEM
+   ========================================================= */
+function openAttendance(classroomId){
+  setState({view:'attendance', attendanceClassroomId:classroomId, attendanceDate:new Date().toISOString().split('T')[0]});
+}
+
+function classroomStudents(classroomId){
+  return Object.entries(DATA.students).filter(([id,s])=>s.classroomId===classroomId).map(([id,s])=>Object.assign({id},s)).sort((a,b)=>{
+    if(a.className!==b.className) return a.className.localeCompare(b.className);
+    return parseInt(a.number)-parseInt(b.number);
+  });
+}
+
+async function addStudent(){
+  const nameEl = document.getElementById('new-student-name');
+  const classEl = document.getElementById('new-student-class');
+  const numberEl = document.getElementById('new-student-number');
+  const name = nameEl.value.trim();
+  const className = classEl.value.trim();
+  const number = numberEl.value.trim();
+  if(!name || !className || !number){ toast('Fill in all student details'); return; }
+  const id = uid('stu');
+  DATA.students[id] = { classroomId: state.attendanceClassroomId, name, className, number, addedAt: Date.now() };
+  await saveData();
+  nameEl.value=''; classEl.value=''; numberEl.value='';
+  render();
+  toast('Student added');
+}
+
+async function deleteStudent(id){
+  delete DATA.students[id];
+  await saveData();
+  render();
+}
+
+async function markAttendance(studentId, status){
+  const dateKey = state.attendanceDate;
+  const key = state.attendanceClassroomId + '-' + dateKey;
+  if(!DATA.attendance[key]) DATA.attendance[key] = { classroomId: state.attendanceClassroomId, date: dateKey, records:{} };
+  DATA.attendance[key].records[studentId] = status;
+  await saveData();
+  render();
+}
+
+function getAttendanceStatus(studentId, date){
+  const key = state.attendanceClassroomId + '-' + date;
+  return DATA.attendance[key] && DATA.attendance[key].records[studentId] ? DATA.attendance[key].records[studentId] : null;
+}
+
+function getAttendanceHistory(classroomId){
+  return Object.entries(DATA.attendance)
+    .filter(([k,a])=>a.classroomId===classroomId)
+    .map(([k,a])=>Object.assign({key:k}, a))
+    .sort((a,b)=>b.date.localeCompare(a.date));
+}
+
+/* =========================================================
+   GRADEBOOK
+   ========================================================= */
+function openGradebook(classroomId){
+  setState({view:'gradebook', gradebookClassroomId:classroomId, gradebookSubjectId:null});
+}
+
+function getStudentGrades(studentId, subjectId){
+  const tests = subjectTests(subjectId);
+  const grades = [];
+  tests.forEach(t=>{
+    const subs = testSubmissions(t.id).filter(s=>
+      s.studentName && DATA.students[studentId] &&
+      s.studentName.trim().toLowerCase()===DATA.students[studentId].name.toLowerCase() &&
+      s.studentClass.trim().toLowerCase()===DATA.students[studentId].className.toLowerCase() &&
+      s.studentNumber.trim().toLowerCase()===DATA.students[studentId].number.toLowerCase()
+    );
+    if(subs.length>0){
+      const latest = subs.sort((a,b)=>b.submittedAt-a.submittedAt)[0];
+      const pct = latest.totalPoints>0 ? Math.round((latest.score/latest.totalPoints)*100) : 0;
+      grades.push({testTitle:t.title, score:latest.score, totalPoints:latest.totalPoints, percent:pct});
+    }
+  });
+  return grades;
+}
+
+/* =========================================================
+   ASSIGNMENTS
+   ========================================================= */
+function subjectAssignments(subjectId){
+  return Object.entries(DATA.assignments).filter(([id,a])=>a.subjectId===subjectId).map(([id,a])=>Object.assign({id},a)).sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate));
+}
+
+async function createAssignment(){
+  const titleEl = document.getElementById('assignment-title');
+  const descEl = document.getElementById('assignment-desc');
+  const dueEl = document.getElementById('assignment-due');
+  const title = titleEl.value.trim();
+  const description = descEl.value.trim();
+  const dueDate = dueEl.value;
+  if(!title){ toast('Give the assignment a title'); return; }
+  const id = uid('asgn');
+  DATA.assignments[id] = { subjectId: state.assignmentSubjectId, title, description, dueDate, createdAt: Date.now(), maxPoints: 10 };
+  await saveData();
+  titleEl.value=''; descEl.value=''; dueEl.value='';
+  render();
+  toast('Assignment created');
+}
+
+async function deleteAssignment(id){
+  delete DATA.assignments[id];
+  Object.keys(DATA.assignmentSubmissions).forEach(sid=>{ if(DATA.assignmentSubmissions[sid].assignmentId===id) delete DATA.assignmentSubmissions[sid]; });
+  await saveData();
+  render();
+}
+
+/* =========================================================
+   DISCUSSIONS
+   ========================================================= */
+function subjectDiscussions(subjectId){
+  return Object.entries(DATA.discussions).filter(([id,d])=>d.subjectId===subjectId).map(([id,d])=>Object.assign({id},d)).sort((a,b)=>b.createdAt-a.createdAt);
+}
+
+function getDiscussionReplies(threadId){
+  return Object.entries(DATA.discussionReplies).filter(([id,r])=>r.threadId===threadId).map(([id,r])=>Object.assign({id},r)).sort((a,b)=>a.createdAt-b.createdAt);
+}
+
+async function createDiscussionThread(){
+  const titleEl = document.getElementById('discussion-title');
+  const textEl = document.getElementById('discussion-text');
+  const title = titleEl.value.trim();
+  const text = textEl.value.trim();
+  if(!title){ toast('Give the discussion a title'); return; }
+  const id = uid('disc');
+  DATA.discussions[id] = { subjectId: state.discussionSubjectId, title, text, createdAt: Date.now(), replyCount: 0 };
+  await saveData();
+  titleEl.value=''; textEl.value='';
+  render();
+  toast('Discussion started');
+}
+
+async function replyToDiscussion(threadId){
+  const textEl = document.getElementById('reply-text-'+threadId);
+  const text = textEl.value.trim();
+  if(!text){ toast('Write a reply first'); return; }
+  const id = uid('dreply');
+  DATA.discussionReplies[id] = { threadId, text, createdAt: Date.now(), author: 'Student' };
+  DATA.discussions[threadId].replyCount = (DATA.discussions[threadId].replyCount || 0) + 1;
+  await saveData();
+  textEl.value='';
+  render();
+  toast('Reply posted');
+}
+
+/* =========================================================
+   HOMEWORK TRACKER
+   ========================================================= */
+function classroomHomework(classroomId){
+  return Object.entries(DATA.homework).filter(([id,h])=>h.classroomId===classroomId).map(([id,h])=>Object.assign({id},h)).sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate));
+}
+
+async function addHomework(){
+  const titleEl = document.getElementById('homework-title');
+  const descEl = document.getElementById('homework-desc');
+  const dueEl = document.getElementById('homework-due');
+  const title = titleEl.value.trim();
+  const description = descEl.value.trim();
+  const dueDate = dueEl.value;
+  if(!title){ toast('Give the homework a title'); return; }
+  const id = uid('hw');
+  DATA.homework[id] = { classroomId: state.homeworkClassroomId, title, description, dueDate, createdAt: Date.now(), completed: [] };
+  await saveData();
+  titleEl.value=''; descEl.value=''; dueEl.value='';
+  render();
+  toast('Homework added');
+}
+
+async function toggleHomeworkComplete(homeworkId, studentId){
+  const hw = DATA.homework[homeworkId];
+  if(!hw) return;
+  const idx = hw.completed.indexOf(studentId);
+  if(idx===-1) hw.completed.push(studentId);
+  else hw.completed.splice(idx,1);
+  await saveData();
+  render();
+}
+
+/* =========================================================
+   STUDY GROUPS
+   ========================================================= */
+function classroomStudyGroups(classroomId){
+  return Object.entries(DATA.studyGroups).filter(([id,g])=>g.classroomId===classroomId).map(([id,g])=>Object.assign({id},g));
+}
+
+async function createStudyGroup(){
+  const nameEl = document.getElementById('group-name');
+  const descEl = document.getElementById('group-desc');
+  const name = nameEl.value.trim();
+  const description = descEl.value.trim();
+  if(!name){ toast('Give the study group a name'); return; }
+  const id = uid('grp');
+  DATA.studyGroups[id] = { classroomId: state.studyGroupClassroomId, name, description, createdAt: Date.now(), members: [] };
+  await saveData();
+  nameEl.value=''; descEl.value='';
+  render();
+  toast('Study group created');
+}
+
+/* =========================================================
+   FLASHCARDS
+   ========================================================= */
+function testFlashcards(testId){
+  const test = DATA.tests[testId];
+  if(!test) return [];
+  return test.questions.map((q,idx)=>({
+    question: q.text,
+    answer: getFlashcardAnswer(q),
+    type: q.type,
+    index: idx
+  }));
+}
+
+function getFlashcardAnswer(q){
+  if(q.type==='mcq') return q.options[q.correct];
+  if(q.type==='tf') return q.correct ? 'True' : 'False';
+  if(q.type==='short') return (q.accepted||[]).join(' or ');
+  if(q.type==='numeric') return q.answer + (q.tolerance ? ' (±'+q.tolerance+')' : '');
+  if(q.type==='match') return q.terms.map((t,i)=>t+' → '+q.defs[i]).join('; ');
+  return 'See answer in test';
+}
+
+/* =========================================================
+   CALENDAR & EVENTS
+   ========================================================= */
+function classroomCalendarEvents(classroomId){
+  const events = [];
+  const c = DATA.classrooms[classroomId];
+  if(!c) return events;
+
+  const subjects = classroomSubjects(classroomId);
+  subjects.forEach(s=>{
+    subjectTests(s.id).forEach(t=>{ if(t.dueDate) events.push({title:t.title+' (Test)',date:t.dueDate,type:'test'}); });
+    subjectMaterials(s.id).forEach(m=>{ if(m.dueDate) events.push({title:m.title+' (Material)',date:m.dueDate,type:'material'}); });
+    subjectAssignments(s.id).forEach(a=>{ if(a.dueDate) events.push({title:a.title+' (Assignment)',date:a.dueDate,type:'assignment'}); });
+  });
+  subjectProjects(state.activeSubjectId||'').forEach(p=>{ if(p.dueDate) events.push({title:p.title+' (Project)',date:p.dueDate,type:'project'}); });
+  classroomHomework(classroomId).forEach(h=>{ if(h.dueDate) events.push({title:h.title+' (Homework)',date:h.dueDate,type:'homework'}); });
+
+  return events.sort((a,b)=>new Date(a.date)-new Date(b.date));
+}
+
+/* =========================================================
+   ANALYTICS & STATISTICS
+   ========================================================= */
+function getClassAnalytics(classroomId){
+  const students = classroomStudents(classroomId);
+  const subjects = classroomSubjects(classroomId);
+
+  let totalTests = 0;
+  let averageScore = 0;
+  let testCount = 0;
+  let attendanceRate = 0;
+  let totalDays = 0;
+  let presentDays = 0;
+
+  students.forEach(s=>{
+    subjects.forEach(subj=>{
+      const grades = getStudentGrades(s.id, subj.id);
+      grades.forEach(g=>{
+        averageScore += g.percent;
+        testCount++;
+      });
+    });
+  });
+
+  const history = getAttendanceHistory(classroomId);
+  history.forEach(h=>{
+    totalDays += Object.keys(h.records).length;
+    presentDays += Object.values(h.records).filter(r=>r==='present'||r==='late').length;
+  });
+
+  subjects.forEach(s=>{ totalTests += subjectTests(s.id).length; });
+
+  return {
+    studentCount: students.length,
+    subjectCount: subjects.length,
+    totalTests,
+    averageScore: testCount>0 ? Math.round(averageScore/testCount) : 0,
+    attendanceRate: totalDays>0 ? Math.round((presentDays/totalDays)*100) : 0
+  };
+}
+
+/* =========================================================
+   CERTIFICATES
+   ========================================================= */
+function generateCertificate(studentId, classroomId, courseName){
+  const id = uid('cert');
+  const student = DATA.students[studentId];
+  if(!student) return;
+  DATA.certificates[id] = { studentId, classroomId, courseName, issuedAt: Date.now(), studentName: student.name };
+  return id;
+}
+
+/* =========================================================
+   PROGRESS REPORTS
+   ========================================================= */
+function generateProgressReport(studentId, subjectId){
+  const student = DATA.students[studentId];
+  const subject = DATA.subjects[subjectId];
+  if(!student || !subject) return null;
+  const grades = getStudentGrades(studentId, subjectId);
+  const avg = grades.length>0 ? Math.round(grades.reduce((a,g)=>a+g.percent,0)/grades.length) : 0;
+  return {
+    studentName: student.name,
+    subjectName: subject.name,
+    averageGrade: avg,
+    testsCompleted: grades.length,
+    generateDate: new Date().toLocaleDateString()
+  };
+}
+
+/* =========================================================
    RENDER
    ========================================================= */
 function render(){
@@ -1596,6 +2033,19 @@ function render(){
   else if(state.view==='project-submitted-notice') body = renderProjectSubmittedNotice();
   else if(state.view==='project-grade-lookup') body = renderProjectGradeLookup();
   else if(state.view==='project-result') body = renderProjectResult();
+  else if(state.view==='attendance') body = renderAttendance();
+  else if(state.view==='gradebook') body = renderGradebook();
+  else if(state.view==='assignments') body = renderAssignments();
+  else if(state.view==='calendar') body = renderCalendar();
+  else if(state.view==='discussions') body = renderDiscussions();
+  else if(state.view==='homework') body = renderHomework();
+  else if(state.view==='study-groups') body = renderStudyGroups();
+  else if(state.view==='flashcards') body = renderFlashcards();
+  else if(state.view==='analytics') body = renderAnalytics();
+  else if(state.view==='certificates') body = renderCertificates();
+  else if(state.view==='progress-report') body = renderProgressReport();
+  else if(state.view==='grade-weights') body = renderGradeWeights();
+  else if(state.view==='lesson-plans') body = renderLessonPlans();
   else body = renderLanding();
 
   app.innerHTML = topbarHtml() + '<main>' + body + '</main>' + renderConfirmDialog();
@@ -1702,7 +2152,11 @@ function renderClassroomDetail(){
       <h1>${esc(c.name)}</h1>
       <div class="meta" style="margin-top:4px;">Join code: <span class="code-pill">${esc(c.code)}</span></div>
     </div>
-    <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this class and everything in it?', ()=>deleteClassroom('${c.id}'))">Delete class</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="openAttendance('${c.id}')">📋 Attendance</button>
+      <button class="btn btn-primary btn-sm" onclick="openGradebook('${c.id}')">📊 Gradebook</button>
+      <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this class and everything in it?', ()=>deleteClassroom('${c.id}'))">Delete class</button>
+    </div>
   </div>
 
   <h3 style="margin:0 0 10px;font-size:16px;">Announcements</h3>
@@ -1927,6 +2381,10 @@ function renderManualGradeToggle(idx, q){
   return `
   <div class="manual-grade-toggle">
     <label class="settings-check"><input type="checkbox" ${q.manualGrade?'checked':''} onchange="updateBuilderQuestion(${idx},{manualGrade:this.checked})"> Require manual grading (don't auto-grade, review each answer yourself)</label>
+  </div>
+  <div class="field" style="margin-top:10px;max-width:150px;">
+    <label>Max points</label>
+    <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
   </div>`;
 }
 
@@ -2050,6 +2508,10 @@ function renderBuilderQuestion(q, idx){
         <textarea rows="2" oninput="updateBuilderQuestion(${idx},{modelAnswer:this.value})">${esc(q.modelAnswer||'')}</textarea>
       </div>
       <div class="meta">Students type a written response — you grade these by hand after they submit.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
     </div>`;
   }
   if(q.type==='cloze'){
@@ -2159,6 +2621,10 @@ function renderBuilderQuestion(q, idx){
         </div>
       </div>
       <div class="meta">A 1–5 scale — there's no single right answer, so you review and mark it yourself.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
     </div>`;
   }
   if(q.type==='rubric'){
@@ -2177,6 +2643,10 @@ function renderBuilderQuestion(q, idx){
         </div>
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const cr=qs[${idx}].criteria.slice();cr.push({label:'',points:10});qs[${idx}]=Object.assign({},qs[${idx}],{criteria:cr});render();})()">+ Add criterion</button>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
     </div>`;
   }
   if(q.type==='code'){
@@ -2190,6 +2660,10 @@ function renderBuilderQuestion(q, idx){
         <textarea rows="3" class="mono" oninput="updateBuilderQuestion(${idx},{starterCode:this.value})">${esc(q.starterCode||'')}</textarea>
       </div>
       <div class="meta">Students get a code editor box — you review their code by hand after they submit.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
     </div>`;
   }
   if(q.type==='fileupload'){
@@ -2200,6 +2674,10 @@ function renderBuilderQuestion(q, idx){
         <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
       </div>
       <div class="meta">Students attach a file (photo of work, document, etc.) as their answer — you review and grade it by hand.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
     </div>`;
   }
   if(q.type==='allocation'){
@@ -2233,6 +2711,10 @@ function renderBuilderQuestion(q, idx){
         <input type="text" value="${esc(q.text)}" oninput="updateBuilderQuestion(${idx},{text:this.value})">
       </div>
       <div class="meta">Students record a short clip with their microphone — you listen and grade it by hand.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
     </div>`;
   }
   return `<div class="qcard">
@@ -2267,11 +2749,11 @@ function renderTeacherResults(){
     <tbody>
       ${subs.map(s=>{
         const pendingCount = s.detail.filter(d=>d.correct===null).length;
-        const gradedTotal = s.total - pendingCount;
-        const pctLabel = pendingCount>0 ? 'Needs review' : (gradedTotal>0 ? Math.round((s.score/gradedTotal)*100)+'%' : '—');
+        const pct = s.totalPoints>0 ? Math.round((s.score/s.totalPoints)*100) : 0;
+        const pctLabel = pendingCount>0 ? 'Needs review' : pct+'%';
         return `<tr>
           <td>${esc(s.studentName)}</td><td>${esc(s.studentClass)}</td><td>${esc(s.studentNumber)}</td>
-          <td>${s.score} / ${s.total}</td><td>${pctLabel}</td>
+          <td>${Math.round(s.score*10)/10} / ${s.totalPoints}</td><td>${pctLabel}</td>
           <td><button class="btn btn-outline btn-sm" onclick="setState({view:'test-result', resultSubmissionId:'${s.id}'})">Review</button></td>
         </tr>`;
       }).join('')}
@@ -2870,29 +3352,50 @@ function renderTestResult(){
   if(!sub) return `<p>Result not found.</p>`;
   const t = DATA.tests[sub.testId];
   const pendingCount = sub.detail.filter(d=>d.correct===null).length;
-  const gradedTotal = sub.total - pendingCount;
-  const pct = gradedTotal>0 ? Math.round((sub.score/gradedTotal)*100) : null;
+  const pct = sub.totalPoints>0 ? Math.round((sub.score/sub.totalPoints)*100) : 0;
   const backView = state.role==='teacher' ? 'teacher-results' : 'student-subject';
   return `
   <button class="back-link" onclick="setState({view:'${backView}', resultsTestId: '${sub.testId}'})">← Back</button>
   <div class="page-head"><h1>${esc(t.title)}</h1></div>
   ${sub.studentName ? `<div class="meta" style="margin:-14px 0 18px;">${esc(sub.studentName)} · ${esc(sub.studentClass)} · No. ${esc(sub.studentNumber)}</div>` : ''}
   <div class="score-hero">
-    <div class="num">${sub.score}<span>/${sub.total}</span></div>
-    <div class="meta" style="margin-top:6px;">${pct===null ? 'Awaiting grading' : pct+'% correct'}${pendingCount>0 ? ` · ${pendingCount} response${pendingCount===1?'':'s'} awaiting review` : ''}${sub.scoreOverridden ? ' · final score set by teacher' : ''}</div>
+    <div class="num">${Math.round(sub.score*10)/10}<span>/${sub.totalPoints}</span></div>
+    <div class="meta" style="margin-top:6px;">${pct}% correct${pendingCount>0 ? ` · ${pendingCount} response${pendingCount===1?'':'s'} awaiting review` : ''}${sub.scoreOverridden ? ' · final score set by teacher' : ''}</div>
   </div>
   ${state.role==='teacher' ? `
-  <div class="card" style="margin-bottom:20px;max-width:340px;">
-    <div class="field" style="margin-bottom:10px;"><label>Override final score</label>
-      <input id="score-override-input" type="number" min="0" step="any" value="${esc(sub.score)}">
+  <div class="card" style="margin-bottom:20px;max-width:380px;">
+    <div style="margin-bottom:12px;">
+      <h3 style="margin:0 0 8px;font-size:15px;">Adjust final score</h3>
+      <div style="display:flex;gap:10px;align-items:flex-end;">
+        <div class="field" style="margin-bottom:0;flex:1;">
+          <label>Percentage (0–100%)</label>
+          <input id="score-override-input" type="number" min="0" max="100" step="1" value="${sub.scoreOverridePercentage || pct}">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="overrideSubmissionScore('${state.resultSubmissionId}')">Apply</button>
+      </div>
     </div>
-    <button class="btn btn-primary btn-sm" onclick="overrideSubmissionScore('${state.resultSubmissionId}')">Set final score</button>
   </div>` : ''}
   ${sub.detail.map((d,i)=>{
     const preview = answerPreview(d.question, d.answer);
     const isPending = d.correct===null;
     const tagLabel = isPending ? 'Awaiting review' : (d.correct?'Correct':'Incorrect');
     const rowClass = isPending ? 'pending' : (d.correct?'correct':'incorrect');
+    const maxPts = d.maxPoints || 1;
+    const earnedPts = d.earnedPoints !== null ? d.earnedPoints : (d.correct===true ? maxPts : 0);
+
+    let correctAnswer = '';
+    if(d.question.type==='mcq') correctAnswer = d.question.options[d.question.correct];
+    else if(d.question.type==='tf') correctAnswer = d.question.correct ? 'True' : 'False';
+    else if(d.question.type==='short') correctAnswer = (d.question.accepted || []).join(' or ');
+    else if(d.question.type==='numeric') correctAnswer = d.question.answer + (d.question.tolerance ? ' (±' + d.question.tolerance + ')' : '');
+    else if(d.question.type==='match') correctAnswer = d.question.terms.map((t,i)=>''+t+' → '+d.question.defs[i]).join('; ');
+    else if(d.question.type==='msq') correctAnswer = d.question.correct.map(i=>d.question.options[i]).join(', ');
+    else if(d.question.type==='order') correctAnswer = d.question.items.join(' → ');
+    else if(d.question.type==='cloze') correctAnswer = d.question.blanks.map((b,bi)=>'Blank '+(bi+1)+': '+b.accepted).join('; ');
+    else if(d.question.type==='dropdowncloze') correctAnswer = d.question.blanks.map((b,bi)=>'Blank '+(bi+1)+': '+b.correct).join('; ');
+    else if(d.question.type==='categorize') correctAnswer = d.question.items.map(it=>it.label+' → '+d.question.categories[it.correctCategory]).join('; ');
+    else if(d.question.type==='stateset') correctAnswer = d.question.statements.map(st=>st.text+': '+(st.correct?'True':'False')).join('; ');
+
     let answerBlock = `<div class="meta" style="margin-top:4px;">Answer: ${esc(preview)}</div>`;
     if(d.question.type==='code'){
       answerBlock = `<pre class="mono" style="background:var(--paper-dim);border-radius:8px;padding:10px 12px;margin-top:6px;white-space:pre-wrap;font-size:12.5px;">${esc(d.answer && String(d.answer).trim() ? d.answer : '(no answer)')}</pre>`;
@@ -2903,21 +3406,152 @@ function renderTestResult(){
         ? `<div style="margin-top:6px;"><audio controls src="${d.answer.dataUrl}" style="width:100%;"></audio></div>`
         : `<div style="margin-top:6px;"><a href="${d.answer.dataUrl}" download="${esc(d.answer.name)}"><button class="btn btn-outline btn-sm">⬇ ${esc(d.answer.name)} (${formatFileSize(d.answer.size)})</button></a></div>`;
     }
+
+    let correctBlock = '';
+    if(correctAnswer && d.correct!==true){
+      if(d.question.type==='code'){
+        correctBlock = `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);"><div class="meta" style="margin-bottom:4px;">Expected answer:</div><pre class="mono" style="background:var(--marker-blue-dim);border-radius:8px;padding:10px 12px;white-space:pre-wrap;font-size:12.5px;">${esc(correctAnswer)}</pre></div>`;
+      } else {
+        correctBlock = `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);"><div class="meta">Expected answer: ${esc(correctAnswer)}</div></div>`;
+      }
+    }
+
     return `
     <div class="review-row ${rowClass}">
-      <div class="tag">${tagLabel} · Question ${i+1}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <div class="tag">${tagLabel} · Question ${i+1}</div>
+        <div class="meta">${earnedPts}/${maxPts} points</div>
+      </div>
       <div style="margin-top:4px;font-weight:600;">${esc(d.question.text)}</div>
       ${answerBlock}
+      ${correctBlock}
       ${d.question.type==='long' && d.question.modelAnswer && state.role==='teacher' ? `<div class="meta" style="margin-top:2px;">Model answer: ${esc(d.question.modelAnswer)}</div>` : ''}
       ${d.question.type==='rubric' && d.question.criteria && state.role==='teacher' ? `
-        <div class="meta" style="margin-top:6px;"><strong>Rubric:</strong> ${d.question.criteria.map(c=>`${esc(c.label)} (${esc(c.points)} pts)`).join(', ')}</div>` : ''}
+        <div class="meta" style="margin-top:6px;"><strong>Rubric:</strong> ${d.question.criteria.map(c=>esc(c.label)+' ('+esc(c.points)+' pts)').join(', ')}</div>` : ''}
       ${isPending && state.role==='teacher' ? `
-        <div style="margin-top:10px;display:flex;gap:8px;">
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-outline btn-sm" onclick="gradeLongAnswer('${state.resultSubmissionId}',${i},true)">Mark correct</button>
           <button class="btn btn-outline btn-sm" onclick="gradeLongAnswer('${state.resultSubmissionId}',${i},false)">Mark incorrect</button>
+          <div class="field" style="margin-bottom:0;flex:1;min-width:150px;">
+            <label style="font-size:11px;">Points (0–${maxPts})</label>
+            <input id="points-input-${i}" type="number" min="0" max="${maxPts}" step="any" value="${earnedPts}" style="width:100%;">
+            <button class="btn btn-outline btn-sm" onclick="updateQuestionPoints('${state.resultSubmissionId}',${i})" style="margin-top:4px;width:100%;">Update points</button>
+          </div>
         </div>` : ''}
     </div>`;
   }).join('')}
+  `;
+}
+
+function renderAttendance(){
+  const c = Object.assign({id:state.attendanceClassroomId}, DATA.classrooms[state.attendanceClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const students = classroomStudents(c.id);
+  const history = getAttendanceHistory(c.id);
+  return `
+  <button class="back-link" onclick="setState({view:'classroom-detail', activeClassroomId:'${c.id}'})">← Back</button>
+  <div class="page-head"><h1>Attendance — ${esc(c.name)}</h1></div>
+
+  <div class="card" style="margin-bottom:22px;max-width:500px;">
+    <h3 style="margin:0 0 12px;font-size:15px;">Add new student</h3>
+    <div class="field"><label>Name</label>
+      <input id="new-student-name" type="text" placeholder="Full name">
+    </div>
+    <div class="opt-row">
+      <div class="field" style="margin-bottom:0;flex:1;"><label>Class</label>
+        <input id="new-student-class" type="text" placeholder="e.g. A">
+      </div>
+      <div class="field" style="margin-bottom:0;flex:1;"><label>Number</label>
+        <input id="new-student-number" type="text" placeholder="e.g. 1">
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="addStudent()">Add student</button>
+  </div>
+
+  <h3 style="margin:0 0 10px;font-size:16px;">Take attendance</h3>
+  <div style="margin-bottom:16px;">
+    <input type="date" id="attendance-date" value="${state.attendanceDate}" onchange="setState({attendanceDate:this.value})" style="padding:8px 12px;border:1px solid var(--line);border-radius:8px;">
+  </div>
+
+  ${students.length===0 ? `<div class="empty-state">No students added yet.</div>` : `
+  <div class="card">
+    ${students.map(s=>{
+      const status = getAttendanceStatus(s.id, state.attendanceDate);
+      return `
+      <div class="list-row" style="padding:14px 0;border-bottom:1px solid var(--line);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;">${esc(s.name)}</div>
+          <div class="meta">${esc(s.className)} · No. ${esc(s.number)}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn ${status==='present'?'btn-primary':'btn-outline'} btn-sm" onclick="markAttendance('${s.id}','present')">Present</button>
+          <button class="btn ${status==='absent'?'btn-danger':'btn-outline'} btn-sm" onclick="markAttendance('${s.id}','absent')">Absent</button>
+          <button class="btn ${status==='late'?'btn-primary':'btn-outline'} btn-sm" onclick="markAttendance('${s.id}','late')">Late</button>
+          <button class="btn ${status==='sick'?'btn-primary':'btn-outline'} btn-sm" onclick="markAttendance('${s.id}','sick')">Sick</button>
+          <button class="btn ${status==='excused'?'btn-primary':'btn-outline'} btn-sm" onclick="markAttendance('${s.id}','excused')">Excused</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`}
+
+  ${history.length>0 ? `
+  <h3 style="margin:24px 0 10px;font-size:16px;">Attendance history</h3>
+  <div class="card">
+    ${history.slice(0,10).map(h=>{
+      const presentCount = Object.values(h.records).filter(r=>r==='present').length;
+      const absentCount = Object.values(h.records).filter(r=>r==='absent').length;
+      const lateCount = Object.values(h.records).filter(r=>r==='late').length;
+      return `
+      <div style="padding:12px 0;border-bottom:1px solid var(--line);">
+        <div style="font-weight:600;margin-bottom:4px;">${h.date}</div>
+        <div class="meta">Present: ${presentCount} · Absent: ${absentCount} · Late: ${lateCount}</div>
+      </div>`;
+    }).join('')}
+  </div>` : ''}
+  `;
+}
+
+function renderGradebook(){
+  const c = Object.assign({id:state.gradebookClassroomId}, DATA.classrooms[state.gradebookClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const subjects = classroomSubjects(c.id);
+  const students = classroomStudents(c.id);
+
+  return `
+  <button class="back-link" onclick="setState({view:'classroom-detail', activeClassroomId:'${c.id}'})">← Back</button>
+  <div class="page-head"><h1>Gradebook — ${esc(c.name)}</h1></div>
+
+  ${subjects.length===0 ? `<div class="empty-state">No subjects in this class yet.</div>` : `
+  <div class="tabs">
+    ${subjects.map(s=>`
+      <button class="${state.gradebookSubjectId===s.id?'active':''}" onclick="setState({gradebookSubjectId:'${s.id}'})">${esc(s.name)}</button>
+    `).join('')}
+  </div>
+
+  ${state.gradebookSubjectId ? `
+    ${students.length===0 ? `<div class="empty-state">No students in this class yet.</div>` : `
+    <table class="results-table" style="margin-top:16px;">
+      <thead><tr><th>Name</th><th>Class</th><th>Number</th><th>Average</th><th>Details</th></tr></thead>
+      <tbody>
+        ${students.map(s=>{
+          const grades = getStudentGrades(s.id, state.gradebookSubjectId);
+          const avg = grades.length>0 ? Math.round(grades.reduce((a,g)=>a+g.percent,0)/grades.length) : 0;
+          return `
+          <tr>
+            <td>${esc(s.name)}</td>
+            <td>${esc(s.className)}</td>
+            <td>${esc(s.number)}</td>
+            <td><strong>${avg}%</strong></td>
+            <td>
+              ${grades.length===0 ? '—' : grades.map(g=>g.testTitle+': '+g.percent+'%').join(', ')}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    `}
+  ` : ''}
+  `}
   `;
 }
 
