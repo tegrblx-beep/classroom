@@ -865,7 +865,7 @@ async function addMaterial(){
   const id = uid('mat');
   DATA.materials[id] = {
     subjectId: state.activeSubjectId, title, description, url, type: state.newMaterialType, addedAt: Date.now(),
-    fileName: f ? f.name : null, fileSize: f ? f.size : null, fileData: f ? f.dataUrl : null
+    fileName: f ? f.name : null, fileSize: f ? f.size : null, fileData: f ? f.dataUrl : null, published: false
   };
   await saveData();
   titleEl.value=''; descEl.value=''; urlEl.value='';
@@ -968,7 +968,8 @@ async function saveTest(){
     allowRetake: !!document.getElementById('builder-allowretake').checked
   };
   const id = state.editingTestId || uid('test');
-  DATA.tests[id] = { subjectId: state.builderSubjectId, title, questions: state.builderQuestions, settings };
+  const existingPublished = state.editingTestId ? (DATA.tests[id]?.published || false) : false;
+  DATA.tests[id] = { subjectId: state.builderSubjectId, title, questions: state.builderQuestions, settings, published: existingPublished };
   await saveData();
   setState({view:'subject-detail', activeSubjectId: state.builderSubjectId, activeSubjectTab:'tests', editingTestId:null});
   toast(state.editingTestId ? 'Test updated' : 'Test saved');
@@ -997,7 +998,7 @@ async function createProject(){
   const dueDate = dueEl.value;
   if(!title){ toast('Give the project a title'); return; }
   const id = uid('proj');
-  DATA.projects[id] = { subjectId: state.activeSubjectId, title, description, dueDate, createdAt: Date.now() };
+  DATA.projects[id] = { subjectId: state.activeSubjectId, title, description, dueDate, createdAt: Date.now(), published: false };
   await saveData();
   titleEl.value=''; descEl.value=''; dueEl.value='';
   render();
@@ -1087,14 +1088,20 @@ function startIdentifiedTest(){
   const questions = settings.shuffle ? shuffleArray(t.questions) : t.questions.slice();
   const deadline = settings.timeLimitMin>0 ? Date.now()+settings.timeLimitMin*60000 : null;
   const initialAnswers = {};
+  const shuffleCache = {};
   questions.forEach((q, idx)=>{
     if(q.type==='order'){
       initialAnswers[idx] = shuffleArray(q.items.map((_,ii)=>ii));
     }
+    if(q.type==='match'){
+      const order = q.defs.map((_,i)=>i);
+      for(let k=order.length-1;k>0;k--){ const j=Math.floor(Math.random()*(k+1)); [order[k],order[j]]=[order[j],order[k]]; }
+      shuffleCache[state.takingTestId+'-'+idx] = order;
+    }
   });
   setState({view:'take-test', takingAnswers:initialAnswers, takingPending:{}, takingIndex:0,
     takingIdentity:{name, cls, number}, identityError:'',
-    takingQuestions:questions, takingDeadlineAt:deadline});
+    takingQuestions:questions, takingDeadlineAt:deadline, _shuffleCache:shuffleCache});
   if(deadline) startTestTimer();
 }
 
@@ -2155,6 +2162,12 @@ function renderClassroomDetail(){
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-primary btn-sm" onclick="openAttendance('${c.id}')">📋 Attendance</button>
       <button class="btn btn-primary btn-sm" onclick="openGradebook('${c.id}')">📊 Gradebook</button>
+      <button class="btn btn-primary btn-sm" onclick="setState({view:'calendar', calendarClassroomId:'${c.id}'})">📅 Calendar</button>
+      <button class="btn btn-primary btn-sm" onclick="setState({view:'homework', homeworkClassroomId:'${c.id}'})">📝 Homework</button>
+      <button class="btn btn-primary btn-sm" onclick="setState({view:'study-groups', studyGroupClassroomId:'${c.id}'})">👥 Study Groups</button>
+      <button class="btn btn-primary btn-sm" onclick="setState({view:'analytics', analyticsClassroomId:'${c.id}'})">📊 Analytics</button>
+      <button class="btn btn-primary btn-sm" onclick="setState({view:'progress-report', progressReportClassroomId:'${c.id}'})">📄 Progress Reports</button>
+      <button class="btn btn-primary btn-sm" onclick="setState({view:'certificates', certificateClassroomId:'${c.id}'})">🏆 Certificates</button>
       <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this class and everything in it?', ()=>deleteClassroom('${c.id}'))">Delete class</button>
     </div>
   </div>
@@ -2224,6 +2237,13 @@ function renderSubjectDetail(){
     <button class="${tab==='materials'?'active':''}" onclick="setState({activeSubjectTab:'materials'})">Materials (${materials.length})</button>
     <button class="${tab==='tests'?'active':''}" onclick="setState({activeSubjectTab:'tests'})">Tests (${tests.length})</button>
     <button class="${tab==='projects'?'active':''}" onclick="setState({activeSubjectTab:'projects'})">Projects (${projects.length})</button>
+    <button class="${tab==='assignments'?'active':''}" onclick="setState({activeSubjectTab:'assignments'})" style="margin-left:auto;">📋 Assignments</button>
+    <button class="${tab==='discussions'?'active':''}" onclick="setState({activeSubjectTab:'discussions'})">💬 Discussions</button>
+    ${state.role==='teacher' ? `
+      <button class="btn btn-outline btn-sm" onclick="setState({view:'lesson-plans', lessonPlanSubjectId:'${s.id}'})">📖 Lesson Plans</button>
+      <button class="btn btn-outline btn-sm" onclick="setState({view:'grade-weights', gradeWeightSubjectId:'${s.id}'})">⚖️ Grade Weights</button>
+    ` : ''}
+    ${state.role==='student' ? `<button onclick="setState({view:'flashcards', flashcardTestId:'${tests[0]?.id||''}'})">🎴 Study</button>` : ''}
   </div>
   ${tab==='materials' ? `
     <div class="card" style="margin-bottom:20px;max-width:480px;">
@@ -2276,15 +2296,17 @@ function renderSubjectDetail(){
         <div class="tile">
           <h3>${esc(t.title)}</h3>
           <div class="meta">${t.questions.length} question${t.questions.length===1?'':'s'} · ${testSubmissions(t.id).length} submission${testSubmissions(t.id).length===1?'':'s'}</div>
+          ${t.published ? `<span class="due-pill" style="background:var(--marker-teal-dim);color:var(--marker-teal);">Published</span>` : `<span class="due-pill" style="background:var(--marker-yellow-dim);color:var(--marker-yellow);">Draft</span>`}
           <div class="tile-actions">
             <button class="btn btn-outline btn-sm" onclick="startTestBuilder('${s.id}','${t.id}')">Edit</button>
             <button class="btn btn-outline btn-sm" onclick="viewTestResults('${t.id}')">Results</button>
+            <button class="btn ${t.published?'btn-outline':'btn-primary'} btn-sm" onclick="togglePublish('test','${t.id}')">${t.published?'Unpublish':'Publish'}</button>
             <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this test?', ()=>deleteTest('${t.id}'))">Delete</button>
           </div>
         </div>
       `).join('')}
     </div>`}
-  ` : `
+  ` : tab==='projects' ? `
     <div class="card" style="margin-bottom:20px;max-width:480px;">
       <div class="field" style="margin-bottom:8px;"><label>Title</label>
         <input id="project-title" type="text" placeholder="e.g. Science Fair Poster">
@@ -2316,6 +2338,8 @@ function renderSubjectDetail(){
         </div>`;
       }).join('')}
     </div>`}
+  ` : tab==='assignments' ? renderAssignments(s.id) : tab==='discussions' ? renderDiscussions(s.id) : `
+    <div class="empty-state">Unknown tab</div>
   `}`;
 }
 
@@ -2405,6 +2429,10 @@ function renderBuilderQuestion(q, idx){
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.push('');qs[${idx}]=Object.assign({},qs[${idx}],{options:o});render();})()">+ Add choice</button>
       <div class="meta" style="margin-top:8px;">Select the radio button next to the correct answer.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2424,6 +2452,10 @@ function renderBuilderQuestion(q, idx){
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const o=qs[${idx}].options.slice();o.push('');qs[${idx}]=Object.assign({},qs[${idx}],{options:o});render();})()">+ Add choice</button>
       <div class="meta" style="margin-top:8px;">Check every correct choice — students must select all and only these to get it right.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2437,6 +2469,10 @@ function renderBuilderQuestion(q, idx){
       <div class="opt-row">
         <label style="display:flex;align-items:center;gap:6px;"><input type="radio" name="tf-${idx}" ${q.correct===true?'checked':''} onchange="updateBuilderQuestion(${idx},{correct:true})"> True</label>
         <label style="display:flex;align-items:center;gap:6px;margin-left:18px;"><input type="radio" name="tf-${idx}" ${q.correct===false?'checked':''} onchange="updateBuilderQuestion(${idx},{correct:false})"> False</label>
+      </div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
       </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
@@ -2457,6 +2493,10 @@ function renderBuilderQuestion(q, idx){
         </div>
       </div>
       <div class="meta" style="margin-top:8px;">Graded automatically — accepts anything within the tolerance range.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2475,6 +2515,10 @@ function renderBuilderQuestion(q, idx){
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const acc=qs[${idx}].accepted.slice();acc.push('');qs[${idx}]=Object.assign({},qs[${idx}],{accepted:acc});render();})()">+ Add alternate answer</button>
       <div class="meta" style="margin-top:8px;">Graded automatically — matches any accepted answer, not case-sensitive. Turn on manual grading below if you'd rather review these yourself.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2494,6 +2538,10 @@ function renderBuilderQuestion(q, idx){
         </div>
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it.push('');qs[${idx}]=Object.assign({},qs[${idx}],{items:it});render();})()">+ Add item</button>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2530,6 +2578,10 @@ function renderBuilderQuestion(q, idx){
         </div>
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const bl=qs[${idx}].blanks.slice();bl.push({accepted:''});qs[${idx}]=Object.assign({},qs[${idx}],{blanks:bl});render();})()">+ Add blank</button>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2553,6 +2605,10 @@ function renderBuilderQuestion(q, idx){
         </div>
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const bl=qs[${idx}].blanks.slice();bl.push({options:'',correct:''});qs[${idx}]=Object.assign({},qs[${idx}],{blanks:bl});render();})()">+ Add blank</button>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2582,6 +2638,10 @@ function renderBuilderQuestion(q, idx){
         </div>
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it.push({label:'',correctCategory:0});qs[${idx}]=Object.assign({},qs[${idx}],{items:it});render();})()">+ Add item</button>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2602,6 +2662,10 @@ function renderBuilderQuestion(q, idx){
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const s=qs[${idx}].statements.slice();s.push({text:'',correct:true});qs[${idx}]=Object.assign({},qs[${idx}],{statements:s});render();})()">+ Add statement</button>
       <div class="meta" style="margin-top:8px;">Students must get every statement right for the question to count correct.</div>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2700,6 +2764,10 @@ function renderBuilderQuestion(q, idx){
         </div>
       `).join('')}
       <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const it=qs[${idx}].items.slice();it.push({label:'',target:0,tolerance:5});qs[${idx}]=Object.assign({},qs[${idx}],{items:it});render();})()">+ Add item</button>
+      <div class="field" style="margin-top:10px;max-width:150px;">
+        <label>Max points</label>
+        <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+      </div>
       ${renderManualGradeToggle(idx, q)}
     </div>`;
   }
@@ -2733,6 +2801,11 @@ function renderBuilderQuestion(q, idx){
       </div>
     `).join('')}
     <button class="btn btn-outline btn-sm" onclick="(function(){const qs=state.builderQuestions;const t=qs[${idx}].terms.slice();const d=qs[${idx}].defs.slice();t.push('');d.push('');qs[${idx}]=Object.assign({},qs[${idx}],{terms:t,defs:d});render();})()">+ Add pair</button>
+    <div class="field" style="margin-top:10px;max-width:150px;">
+      <label>Max points</label>
+      <input type="number" min="1" step="1" value="${q.maxPoints||1}" oninput="updateBuilderQuestion(${idx},{maxPoints:parseFloat(this.value)||1})">
+    </div>
+    ${renderManualGradeToggle(idx, q)}
   </div>`;
 }
 
@@ -3420,7 +3493,17 @@ function renderTestResult(){
     <div class="review-row ${rowClass}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
         <div class="tag">${tagLabel} · Question ${i+1}</div>
+        ${state.role==='teacher' ? `
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div class="field" style="margin-bottom:0;max-width:120px;">
+            <input id="points-input-${i}" type="number" min="0" max="${maxPts}" step="any" value="${earnedPts}" style="width:100%;padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;">
+          </div>
+          <span class="meta">/${maxPts}</span>
+          <button class="btn btn-outline btn-sm" onclick="updateQuestionPoints('${state.resultSubmissionId}',${i})">Update</button>
+        </div>
+        ` : `
         <div class="meta">${earnedPts}/${maxPts} points</div>
+        `}
       </div>
       <div style="margin-top:4px;font-weight:600;">${esc(d.question.text)}</div>
       ${answerBlock}
@@ -3432,11 +3515,6 @@ function renderTestResult(){
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-outline btn-sm" onclick="gradeLongAnswer('${state.resultSubmissionId}',${i},true)">Mark correct</button>
           <button class="btn btn-outline btn-sm" onclick="gradeLongAnswer('${state.resultSubmissionId}',${i},false)">Mark incorrect</button>
-          <div class="field" style="margin-bottom:0;flex:1;min-width:150px;">
-            <label style="font-size:11px;">Points (0–${maxPts})</label>
-            <input id="points-input-${i}" type="number" min="0" max="${maxPts}" step="any" value="${earnedPts}" style="width:100%;">
-            <button class="btn btn-outline btn-sm" onclick="updateQuestionPoints('${state.resultSubmissionId}',${i})" style="margin-top:4px;width:100%;">Update points</button>
-          </div>
         </div>` : ''}
     </div>`;
   }).join('')}
@@ -3553,6 +3631,728 @@ function renderGradebook(){
   ` : ''}
   `}
   `;
+}
+
+function renderAssignments(){
+  const s = Object.assign({id:state.assignmentSubjectId}, DATA.subjects[state.assignmentSubjectId]);
+  if(!s.name) return `<p>Subject not found.</p>`;
+  const assignments = subjectAssignments(s.id);
+  return `
+  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:'${s.id}', activeSubjectTab:'materials'})">← Back</button>
+  <div class="page-head"><h1>Assignments — ${esc(s.name)}</h1></div>
+  <div class="card" style="margin-bottom:20px;max-width:480px;">
+    <div class="field"><label>Title</label>
+      <input id="assignment-title" type="text" placeholder="e.g. Essay on Chapter 5">
+    </div>
+    <div class="field"><label>Description</label>
+      <textarea id="assignment-desc" rows="3" placeholder="Assignment details..."></textarea>
+    </div>
+    <div class="field"><label>Due date</label>
+      <input id="assignment-due" type="date">
+    </div>
+    <button class="btn btn-primary" onclick="createAssignment()">Create assignment</button>
+  </div>
+  ${assignments.length===0 ? `<div class="empty-state">No assignments yet.</div>` : `
+  <div class="grid">
+    ${assignments.map(a=>{
+      const overdue = isPastDue(a.dueDate);
+      return `
+      <div class="tile">
+        <h3>${esc(a.title)}</h3>
+        ${a.description ? `<div class="meta" style="margin-bottom:6px;">${esc(a.description)}</div>` : ''}
+        ${a.dueDate ? `<span class="due-pill ${overdue?'overdue':''}">Due ${esc(formatDueDate(a.dueDate))}</span>` : ''}
+        <div class="tile-actions">
+          <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this assignment?', ()=>deleteAssignment('${a.id}'))">Delete</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`}
+  `;
+}
+
+function renderDiscussions(){
+  const s = Object.assign({id:state.discussionSubjectId}, DATA.subjects[state.discussionSubjectId]);
+  if(!s.name) return `<p>Subject not found.</p>`;
+  const threads = subjectDiscussions(s.id);
+  return `
+  <button class="back-link" onclick="setState({view:'student-subject', studentActiveSubjectId:'${s.id}'})">← Back</button>
+  <div class="page-head"><h1>Discussions — ${esc(s.name)}</h1></div>
+  <div class="card" style="margin-bottom:20px;max-width:600px;">
+    <div class="field"><label>Start a new discussion</label>
+      <input id="discussion-title" type="text" placeholder="Topic title...">
+    </div>
+    <div class="field"><label>Your thoughts</label>
+      <textarea id="discussion-text" rows="3" placeholder="What would you like to discuss?"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="createDiscussionThread()">Post discussion</button>
+  </div>
+  ${threads.length===0 ? `<div class="empty-state">No discussions yet. Start one!</div>` : `
+  <div style="display:flex;flex-direction:column;gap:16px;">
+    ${threads.map(t=>{
+      const replies = getDiscussionReplies(t.id);
+      return `
+      <div class="card">
+        <h3 style="margin:0 0 6px;">${esc(t.title)}</h3>
+        <div class="meta" style="margin-bottom:10px;">${new Date(t.createdAt).toLocaleDateString()} · ${t.replyCount||0} replies</div>
+        <div style="color:var(--ink);margin-bottom:12px;line-height:1.5;">${esc(t.text)}</div>
+        <div style="border-top:1px dashed var(--line);padding-top:12px;">
+          ${replies.length>0 ? `
+          <div style="margin-bottom:12px;">
+            ${replies.slice(-3).map(r=>`
+              <div style="font-size:13px;margin-bottom:6px;padding:8px;background:var(--paper-dim);border-radius:6px;">
+                <div style="font-weight:600;font-size:12px;color:var(--muted);">Reply</div>
+                <div>${esc(r.text)}</div>
+              </div>
+            `).join('')}
+          </div>` : ''}
+          <textarea id="reply-text-${t.id}" rows="2" placeholder="Write a reply..." style="width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;"></textarea>
+          <button class="btn btn-primary btn-sm" onclick="replyToDiscussion('${t.id}')" style="margin-top:8px;">Reply</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`}
+  `;
+}
+
+function renderHomework(){
+  const c = Object.assign({id:state.homeworkClassroomId}, DATA.classrooms[state.homeworkClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const homework = classroomHomework(c.id);
+  const students = classroomStudents(c.id);
+  return `
+  <button class="back-link" onclick="setState({view:'classroom-detail', activeClassroomId:'${c.id}'})">← Back</button>
+  <div class="page-head"><h1>Homework Tracker — ${esc(c.name)}</h1></div>
+  <div class="card" style="margin-bottom:20px;max-width:480px;">
+    <div class="field"><label>Add homework</label>
+      <input id="homework-title" type="text" placeholder="e.g. Read Chapter 3">
+    </div>
+    <div class="field"><label>Description</label>
+      <textarea id="homework-desc" rows="2" placeholder="Instructions..."></textarea>
+    </div>
+    <div class="field"><label>Due date</label>
+      <input id="homework-due" type="date">
+    </div>
+    <button class="btn btn-primary" onclick="addHomework()">Add homework</button>
+  </div>
+  ${homework.length===0 ? `<div class="empty-state">No homework assigned yet.</div>` : `
+  <div class="card">
+    ${homework.map(h=>{
+      const completedCount = h.completed.length;
+      const overdue = isPastDue(h.dueDate);
+      return `
+      <div style="padding:14px 0;border-bottom:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <h3 style="margin:0;font-size:15px;">${esc(h.title)}</h3>
+          <span class="due-pill ${overdue?'overdue':''}">Due ${esc(formatDueDate(h.dueDate))}</span>
+        </div>
+        ${h.description ? `<div class="meta" style="margin-bottom:8px;">${esc(h.description)}</div>` : ''}
+        <div class="meta">Completed: ${completedCount}/${students.length}</div>
+        <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">
+          ${students.map(s=>{
+            const isDone = h.completed.includes(s.id);
+            return `<button class="btn ${isDone?'btn-primary':'btn-outline'} btn-sm" onclick="toggleHomeworkComplete('${h.id}','${s.id}')" style="font-size:11px;">${esc(s.name)} ${isDone?'✓':''}</button>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`}
+  `;
+}
+
+function renderStudyGroups(){
+  const c = Object.assign({id:state.studyGroupClassroomId}, DATA.classrooms[state.studyGroupClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const groups = classroomStudyGroups(c.id);
+  return `
+  <button class="back-link" onclick="setState({view:'classroom-detail', activeClassroomId:'${c.id}'})">← Back</button>
+  <div class="page-head"><h1>Study Groups — ${esc(c.name)}</h1></div>
+  <div class="card" style="margin-bottom:20px;max-width:480px;">
+    <div class="field"><label>Create study group</label>
+      <input id="group-name" type="text" placeholder="e.g. Biology Team">
+    </div>
+    <div class="field"><label>Description</label>
+      <textarea id="group-desc" rows="2" placeholder="What will this group study?"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="createStudyGroup()">Create group</button>
+  </div>
+  ${groups.length===0 ? `<div class="empty-state">No study groups yet. Create one!</div>` : `
+  <div class="grid">
+    ${groups.map(g=>`
+      <div class="tile">
+        <h3>${esc(g.name)}</h3>
+        ${g.description ? `<div class="meta" style="margin-bottom:6px;">${esc(g.description)}</div>` : ''}
+        <div class="meta">${g.members.length} members</div>
+      </div>
+    `).join('')}
+  </div>`}
+  `;
+}
+
+function renderFlashcards(){
+  const t = DATA.tests[state.flashcardTestId];
+  if(!t) return `<p>Test not found.</p>`;
+  const cards = testFlashcards(state.flashcardTestId);
+  const card = cards[state.flashcardIndex];
+  if(!card) return `<p>No flashcards.</p>`;
+  return `
+  <button class="back-link" onclick="setState({view:'student-subject'})">← Back</button>
+  <div class="page-head"><h1>Study Mode — ${esc(t.title)}</h1></div>
+  <div style="max-width:600px;margin:0 auto;">
+    <div class="meta" style="text-align:center;margin-bottom:20px;">Card ${state.flashcardIndex+1} of ${cards.length}</div>
+    <div class="card" style="min-height:300px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;margin-bottom:20px;">
+      <div style="font-size:14px;color:var(--muted);margin-bottom:16px;">Question</div>
+      <h2 style="margin:0 0 30px;font-size:24px;">${esc(card.question)}</h2>
+      <button class="btn btn-primary" onclick="document.getElementById('answer-${state.flashcardIndex}').style.display='block';this.style.display='none';">Reveal answer</button>
+      <div id="answer-${state.flashcardIndex}" style="display:none;margin-top:20px;">
+        <div style="font-size:14px;color:var(--muted);margin-bottom:8px;">Answer</div>
+        <div style="font-size:18px;font-weight:600;">${esc(card.answer)}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button class="btn btn-outline" ${state.flashcardIndex===0?'disabled':''} onclick="setState({flashcardIndex:${state.flashcardIndex-1}})">← Previous</button>
+      <button class="btn btn-outline" ${state.flashcardIndex>=cards.length-1?'disabled':''} onclick="setState({flashcardIndex:${state.flashcardIndex+1}})">Next →</button>
+    </div>
+  </div>
+  `;
+}
+
+function renderCalendar(){
+  const c = Object.assign({id:state.calendarClassroomId}, DATA.classrooms[state.calendarClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const events = classroomCalendarEvents(c.id);
+  const upcomingEvents = events.filter(e=>new Date(e.date)>=new Date()).slice(0,10);
+  return `
+  <button class="back-link" onclick="setState({view:'classroom-detail', activeClassroomId:'${c.id}'})">← Back</button>
+  <div class="page-head"><h1>Calendar — ${esc(c.name)}</h1></div>
+  <h3 style="margin:0 0 10px;font-size:16px;">Upcoming events</h3>
+  ${upcomingEvents.length===0 ? `<div class="empty-state">No upcoming events.</div>` : `
+  <div class="card">
+    ${upcomingEvents.map(e=>`
+      <div style="padding:12px 0;border-bottom:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:600;">${esc(e.title)}</div>
+            <div class="meta">${esc(formatDueDate(e.date))}</div>
+          </div>
+          <span style="font-size:12px;padding:4px 8px;background:var(--marker-blue-dim);color:var(--marker-blue);border-radius:6px;">${e.type}</span>
+        </div>
+      </div>
+    `).join('')}
+  </div>`}
+  `;
+}
+
+function renderAnalytics(){
+  const c = Object.assign({id:state.analyticsClassroomId}, DATA.classrooms[state.analyticsClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const stats = getClassAnalytics(c.id);
+  return `
+  <button class="back-link" onclick="setState({view:'classroom-detail', activeClassroomId:'${c.id}'})">← Back</button>
+  <div class="page-head"><h1>Analytics — ${esc(c.name)}</h1></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+    <div class="card">
+      <div class="meta">Students</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.studentCount}</div>
+    </div>
+    <div class="card">
+      <div class="meta">Subjects</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.subjectCount}</div>
+    </div>
+    <div class="card">
+      <div class="meta">Tests</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.totalTests}</div>
+    </div>
+    <div class="card">
+      <div class="meta">Average Grade</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.averageScore}%</div>
+    </div>
+    <div class="card">
+      <div class="meta">Attendance Rate</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.attendanceRate}%</div>
+    </div>
+  </div>
+  `;
+}
+
+function renderCertificates(){
+  const c = Object.assign({id:state.certificateClassroomId}, DATA.classrooms[state.certificateClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const certs = Object.entries(DATA.certificates).filter(([id,cert])=>cert.classroomId===c.id).map(([id,cert])=>Object.assign({id},cert));
+  return `
+  <button class="back-link" onclick="setState({view:'classroom-detail', activeClassroomId:'${c.id}'})">← Back</button>
+  <div class="page-head"><h1>Certificates — ${esc(c.name)}</h1></div>
+  ${certs.length===0 ? `<div class="empty-state">No certificates issued yet.</div>` : `
+  <div class="grid">
+    ${certs.map(cert=>`
+      <div class="tile">
+        <div style="font-size:28px;margin-bottom:10px;">🏆</div>
+        <h3>${esc(cert.studentName)}</h3>
+        <div class="meta">Course: ${esc(cert.courseName)}</div>
+        <div class="meta">Issued: ${new Date(cert.issuedAt).toLocaleDateString()}</div>
+      </div>
+    `).join('')}
+  </div>`}
+  `;
+}
+
+function renderAssignments(subjectId){
+  const s = DATA.subjects[subjectId];
+  if(!s) return `<p>Subject not found.</p>`;
+  const assignments = Object.entries(DATA.assignments).filter(([id,a])=>a.subjectId===subjectId).map(([id,a])=>Object.assign({id},a)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  return `
+  <div style="margin-bottom:16px;">
+    <button class="btn btn-primary" onclick="setState({assignmentCreateMode:true})">+ New Assignment</button>
+  </div>
+  ${state.assignmentCreateMode ? `
+  <div class="card" style="margin-bottom:20px;max-width:480px;">
+    <div class="field" style="margin-bottom:8px;"><label>Title</label>
+      <input id="assignment-title" type="text" placeholder="e.g. Chapter 5 Homework">
+    </div>
+    <div class="field" style="margin-bottom:8px;"><label>Description</label>
+      <textarea id="assignment-desc" rows="3" placeholder="What should students do?"></textarea>
+    </div>
+    <div class="field" style="margin-bottom:10px;"><label>Due date</label>
+      <input id="assignment-due" type="date">
+    </div>
+    <button class="btn btn-primary" onclick="createAssignment('${subjectId}')">Create</button>
+    <button class="btn btn-outline" onclick="setState({assignmentCreateMode:false})">Cancel</button>
+  </div>
+  ` : ''}
+  ${assignments.length===0 ? `<div class="empty-state">No assignments yet.</div>` : `
+  <div class="grid">
+    ${assignments.map(a=>{
+      const overdue = isPastDue(a.dueDate);
+      return `
+      <div class="tile">
+        <h3>${esc(a.title)}</h3>
+        ${a.description ? `<div class="meta" style="margin-bottom:6px;">${esc(a.description)}</div>` : ''}
+        ${a.dueDate ? `<span class="due-pill ${overdue?'overdue':''}">Due ${esc(formatDueDate(a.dueDate))}</span>` : ''}
+        <div class="tile-actions">
+          <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this assignment?', ()=>deleteAssignment('${a.id}'))">Delete</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`}
+  `;
+}
+
+function renderDiscussions(subjectId){
+  const s = DATA.subjects[subjectId];
+  if(!s) return `<p>Subject not found.</p>`;
+  const discussions = Object.entries(DATA.discussions).filter(([id,d])=>d.subjectId===subjectId).map(([id,d])=>Object.assign({id},d)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  return `
+  <div style="margin-bottom:16px;">
+    <button class="btn btn-primary" onclick="setState({discussionCreateMode:true})">+ New Discussion</button>
+  </div>
+  ${state.discussionCreateMode ? `
+  <div class="card" style="margin-bottom:20px;max-width:480px;">
+    <div class="field" style="margin-bottom:8px;"><label>Topic</label>
+      <input id="discussion-topic" type="text" placeholder="e.g. What did you think about chapter 3?">
+    </div>
+    <div class="field" style="margin-bottom:10px;"><label>Description</label>
+      <textarea id="discussion-desc" rows="3" placeholder="Add details..."></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="createDiscussion('${subjectId}')">Post</button>
+    <button class="btn btn-outline" onclick="setState({discussionCreateMode:false})">Cancel</button>
+  </div>
+  ` : ''}
+  ${discussions.length===0 ? `<div class="empty-state">No discussions yet.</div>` : `
+  <div style="display:flex;flex-direction:column;gap:12px;">
+    ${discussions.map(d=>`
+      <div class="card">
+        <h3 style="margin:0 0 8px;">${esc(d.topic)}</h3>
+        ${d.description ? `<p style="margin:0 0 10px;color:#818979;">${esc(d.description)}</p>` : ''}
+        <div class="meta">Posted ${new Date(d.createdAt).toLocaleDateString()} · ${d.replies ? d.replies.length : 0} replies</div>
+      </div>
+    `).join('')}
+  </div>`}
+  `;
+}
+
+function renderHomework(){
+  const h = Object.assign({id:state.homeworkSubjectId}, DATA.subjects[state.homeworkSubjectId]);
+  if(!h.name) return `<p>Subject not found.</p>`;
+  const homework = Object.entries(DATA.homework).filter(([id,hw])=>hw.subjectId===h.id).map(([id,hw])=>Object.assign({id},hw)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  return `
+  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:'${h.id}'})">← Back</button>
+  <div class="page-head"><h1>Homework — ${esc(h.name)}</h1></div>
+  <div style="margin-bottom:16px;">
+    <button class="btn btn-primary" onclick="setState({homeworkCreateMode:true})">+ Add Homework</button>
+  </div>
+  ${state.homeworkCreateMode ? `
+  <div class="card" style="margin-bottom:20px;max-width:480px;">
+    <div class="field" style="margin-bottom:8px;"><label>Title</label>
+      <input id="homework-title" type="text" placeholder="e.g. Page 42 exercises">
+    </div>
+    <div class="field" style="margin-bottom:8px;"><label>Description</label>
+      <textarea id="homework-desc" rows="2"></textarea>
+    </div>
+    <div class="field" style="margin-bottom:10px;"><label>Due date</label>
+      <input id="homework-due" type="date">
+    </div>
+    <button class="btn btn-primary" onclick="createHomework('${h.id}')">Create</button>
+    <button class="btn btn-outline" onclick="setState({homeworkCreateMode:false})">Cancel</button>
+  </div>
+  ` : ''}
+  ${homework.length===0 ? `<div class="empty-state">No homework assigned yet.</div>` : `
+  <div class="grid">
+    ${homework.map(hw=>{
+      const overdue = isPastDue(hw.dueDate);
+      return `
+      <div class="tile">
+        <h3>${esc(hw.title)}</h3>
+        ${hw.description ? `<div class="meta">${esc(hw.description)}</div>` : ''}
+        ${hw.dueDate ? `<span class="due-pill ${overdue?'overdue':''}">Due ${esc(formatDueDate(hw.dueDate))}</span>` : ''}
+        <div class="tile-actions">
+          <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete?', ()=>deleteHomework('${hw.id}'))">Delete</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`}
+  `;
+}
+
+function renderStudyGroups(){
+  const c = Object.assign({id:state.studyGroupClassroomId}, DATA.classrooms[state.studyGroupClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const groups = Object.entries(DATA.studyGroups).filter(([id,g])=>g.classroomId===c.id).map(([id,g])=>Object.assign({id},g));
+  return `
+  <button class="back-link" onclick="setState({view:'classroom-detail', activeClassroomId:'${c.id}'})">← Back</button>
+  <div class="page-head"><h1>Study Groups — ${esc(c.name)}</h1></div>
+  <div style="margin-bottom:16px;">
+    <button class="btn btn-primary" onclick="setState({studyGroupCreateMode:true})">+ Create Group</button>
+  </div>
+  ${state.studyGroupCreateMode ? `
+  <div class="card" style="margin-bottom:20px;max-width:480px;">
+    <div class="field" style="margin-bottom:8px;"><label>Group Name</label>
+      <input id="studygroup-name" type="text" placeholder="e.g. Math Study Group">
+    </div>
+    <div class="field" style="margin-bottom:10px;"><label>Description</label>
+      <textarea id="studygroup-desc" rows="2"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="createStudyGroup('${c.id}')">Create</button>
+    <button class="btn btn-outline" onclick="setState({studyGroupCreateMode:false})">Cancel</button>
+  </div>
+  ` : ''}
+  ${groups.length===0 ? `<div class="empty-state">No study groups yet.</div>` : `
+  <div class="grid">
+    ${groups.map(g=>`
+      <div class="tile">
+        <h3>${esc(g.name)}</h3>
+        ${g.description ? `<div class="meta">${esc(g.description)}</div>` : ''}
+        <div class="meta" style="margin-top:8px;">${g.members ? g.members.length : 0} members</div>
+      </div>
+    `).join('')}
+  </div>`}
+  `;
+}
+
+function renderFlashcards(){
+  const t = DATA.tests[state.flashcardTestId];
+  if(!t) return `<p>Test not found.</p>`;
+  const cards = t.questions.filter(q=>q.type==='mcq'||q.type==='tf'||q.type==='short');
+  return `
+  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:t.subjectId})">← Back</button>
+  <div class="page-head"><h1>Flashcards — ${esc(t.title)}</h1></div>
+  ${cards.length===0 ? `<div class="empty-state">No flashcard-compatible questions in this test.</div>` : `
+  <div style="max-width:600px;margin:0 auto;">
+    <div class="card" style="padding:40px;text-align:center;">
+      <div style="font-size:24px;margin-bottom:20px;">${esc(cards[state.flashcardIndex||0].text)}</div>
+      <button class="btn btn-primary" onclick="setState({flashcardShowAnswer:true})">Show Answer</button>
+      ${state.flashcardShowAnswer ? `
+      <div style="margin-top:20px;padding:20px;background:#f5f6f4;border-radius:8px;">
+        <div style="font-weight:600;margin-bottom:8px;">Answer:</div>
+        <div>${esc(cards[state.flashcardIndex||0].correct||'N/A')}</div>
+      </div>
+      <div style="margin-top:20px;display:flex;gap:10px;justify-content:center;">
+        <button class="btn btn-outline" onclick="setState({flashcardIndex:Math.max(0,(state.flashcardIndex||0)-1), flashcardShowAnswer:false})">← Previous</button>
+        <button class="btn btn-primary" onclick="setState({flashcardIndex:Math.min(${cards.length-1},(state.flashcardIndex||0)+1), flashcardShowAnswer:false})">Next →</button>
+      </div>
+      ` : ''}
+      <div class="meta" style="margin-top:20px;">Card ${(state.flashcardIndex||0)+1} of ${cards.length}</div>
+    </div>
+  </div>`}
+  `;
+}
+
+function renderCalendar(){
+  const events = [];
+  Object.values(DATA.tests).forEach(t=>{if(t.dueDate)events.push({type:'Test',title:t.title,date:t.dueDate});});
+  Object.values(DATA.projects).forEach(p=>{if(p.dueDate)events.push({type:'Project',title:p.title,date:p.dueDate});});
+  Object.values(DATA.assignments).forEach(a=>{if(a.dueDate)events.push({type:'Assignment',title:a.title,date:a.dueDate});});
+  Object.values(DATA.homework).forEach(h=>{if(h.dueDate)events.push({type:'Homework',title:h.title,date:h.dueDate});});
+  events.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  return `
+  <div class="page-head"><h1>📅 Calendar</h1></div>
+  ${events.length===0 ? `<div class="empty-state">No upcoming events.</div>` : `
+  <div style="display:flex;flex-direction:column;gap:12px;max-width:700px;">
+    ${events.map(e=>{
+      const overdue = isPastDue(e.date);
+      return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:600;margin-bottom:4px;">${esc(e.title)}</div>
+            <div class="meta">${e.type}</div>
+          </div>
+          <span class="due-pill ${overdue?'overdue':''}">${esc(formatDueDate(e.date))}</span>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`}
+  `;
+}
+
+function renderAnalytics(){
+  const stats = {
+    totalStudents: Object.keys(DATA.students).length,
+    totalClasses: Object.keys(DATA.classrooms).length,
+    totalTests: Object.keys(DATA.tests).length,
+    totalSubmissions: Object.keys(DATA.testSubmissions).length,
+    avgGrade: 0
+  };
+  const allGrades = Object.values(DATA.testSubmissions).filter(s=>s.finalScore!==null&&s.finalScore!==undefined).map(s=>s.finalScore);
+  if(allGrades.length>0) stats.avgGrade = Math.round(allGrades.reduce((a,b)=>a+b,0)/allGrades.length);
+  return `
+  <div class="page-head"><h1>📊 Analytics</h1></div>
+  <div class="grid">
+    <div class="card">
+      <div class="meta">Total Students</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.totalStudents}</div>
+    </div>
+    <div class="card">
+      <div class="meta">Total Classes</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.totalClasses}</div>
+    </div>
+    <div class="card">
+      <div class="meta">Total Tests</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.totalTests}</div>
+    </div>
+    <div class="card">
+      <div class="meta">Total Submissions</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.totalSubmissions}</div>
+    </div>
+    <div class="card">
+      <div class="meta">Average Grade</div>
+      <div style="font-size:32px;font-weight:700;color:var(--chalk-dark);">${stats.avgGrade}%</div>
+    </div>
+  </div>
+  `;
+}
+
+function renderProgressReport(){
+  const c = Object.assign({id:state.progressReportClassroomId}, DATA.classrooms[state.progressReportClassroomId]);
+  if(!c.name) return `<p>Class not found.</p>`;
+  const students = Object.entries(DATA.students).filter(([id,st])=>st.classroomId===c.id).map(([id,st])=>Object.assign({id},st));
+  return `
+  <button class="back-link" onclick="setState({view:'classroom-detail', activeClassroomId:'${c.id}'})">← Back</button>
+  <div class="page-head"><h1>Progress Reports — ${esc(c.name)}</h1></div>
+  ${students.length===0 ? `<div class="empty-state">No students in this class.</div>` : `
+  <div style="display:flex;flex-direction:column;gap:12px;">
+    ${students.map(st=>{
+      const subs = Object.values(DATA.testSubmissions).filter(s=>s.studentId===st.id);
+      const graded = subs.filter(s=>s.finalScore!==null&&s.finalScore!==undefined);
+      const avg = graded.length>0 ? Math.round(graded.reduce((a,s)=>a+s.finalScore,0)/graded.length) : 0;
+      return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:600;margin-bottom:4px;">${esc(st.name)}</div>
+            <div class="meta">${graded.length} graded submissions · Avg: ${avg}%</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="downloadProgressReport('${st.id}')">📄 Download</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`}
+  `;
+}
+
+function renderGradeWeights(){
+  const s = Object.assign({id:state.gradeWeightSubjectId}, DATA.subjects[state.gradeWeightSubjectId]);
+  if(!s.name) return `<p>Subject not found.</p>`;
+  const weights = s.gradeWeights || {tests:40, projects:30, assignments:20, participation:10};
+  return `
+  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:'${s.id}'})">← Back</button>
+  <div class="page-head"><h1>Grade Weights — ${esc(s.name)}</h1></div>
+  <div class="card" style="max-width:400px;">
+    <p style="margin:0 0 16px;color:#818979;">Set how much each category contributes to the final grade.</p>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Tests (%)</label>
+      <input id="weight-tests" type="number" min="0" max="100" value="${weights.tests}">
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Projects (%)</label>
+      <input id="weight-projects" type="number" min="0" max="100" value="${weights.projects}">
+    </div>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Assignments (%)</label>
+      <input id="weight-assignments" type="number" min="0" max="100" value="${weights.assignments}">
+    </div>
+    <div class="field" style="margin-bottom:16px;">
+      <label>Participation (%)</label>
+      <input id="weight-participation" type="number" min="0" max="100" value="${weights.participation}">
+    </div>
+    <button class="btn btn-primary" onclick="saveGradeWeights('${s.id}')">Save Weights</button>
+  </div>
+  `;
+}
+
+function renderLessonPlans(){
+  const s = Object.assign({id:state.lessonPlanSubjectId}, DATA.subjects[state.lessonPlanSubjectId]);
+  if(!s.name) return `<p>Subject not found.</p>`;
+  const plans = Object.entries(DATA.lessonPlans||{}).filter(([id,p])=>p.subjectId===s.id).map(([id,p])=>Object.assign({id},p)).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  return `
+  <button class="back-link" onclick="setState({view:'subject-detail', activeSubjectId:'${s.id}'})">← Back</button>
+  <div class="page-head"><h1>Lesson Plans — ${esc(s.name)}</h1></div>
+  <div style="margin-bottom:16px;">
+    <button class="btn btn-primary" onclick="setState({lessonPlanCreateMode:true})">+ New Lesson Plan</button>
+  </div>
+  ${state.lessonPlanCreateMode ? `
+  <div class="card" style="margin-bottom:20px;max-width:600px;">
+    <div class="field" style="margin-bottom:8px;">
+      <label>Title</label>
+      <input id="lessonplan-title" type="text" placeholder="e.g. Introduction to Fractions">
+    </div>
+    <div class="field" style="margin-bottom:8px;">
+      <label>Date</label>
+      <input id="lessonplan-date" type="date">
+    </div>
+    <div class="field" style="margin-bottom:8px;">
+      <label>Objectives</label>
+      <textarea id="lessonplan-objectives" rows="2" placeholder="What will students learn?"></textarea>
+    </div>
+    <div class="field" style="margin-bottom:10px;">
+      <label>Activities</label>
+      <textarea id="lessonplan-activities" rows="3" placeholder="What activities will you do?"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="createLessonPlan('${s.id}')">Create</button>
+    <button class="btn btn-outline" onclick="setState({lessonPlanCreateMode:false})">Cancel</button>
+  </div>
+  ` : ''}
+  ${plans.length===0 ? `<div class="empty-state">No lesson plans yet.</div>` : `
+  <div style="display:flex;flex-direction:column;gap:12px;">
+    ${plans.map(p=>`
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+          <h3 style="margin:0;">${esc(p.title)}</h3>
+          <div class="meta">${new Date(p.date).toLocaleDateString()}</div>
+        </div>
+        ${p.objectives ? `<div style="margin-bottom:6px;"><strong>Objectives:</strong> ${esc(p.objectives)}</div>` : ''}
+        ${p.activities ? `<div><strong>Activities:</strong> ${esc(p.activities)}</div>` : ''}
+        <div style="margin-top:10px;">
+          <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this lesson plan?', ()=>deleteLessonPlan('${p.id}'))">Delete</button>
+        </div>
+      </div>
+    `).join('')}
+  </div>`}
+  `;
+}
+
+
+// Helper functions for new features
+function createAssignment(subjectId){
+  const title = document.getElementById('assignment-title')?.value;
+  const desc = document.getElementById('assignment-desc')?.value;
+  const due = document.getElementById('assignment-due')?.value;
+  if(!title) return alert('Title required');
+  const id = 'assign_'+Date.now();
+  DATA.assignments[id] = {id, subjectId, title, description:desc, dueDate:due, createdAt:new Date().toISOString()};
+  saveData();
+  setState({assignmentCreateMode:false});
+  render();
+}
+
+function deleteAssignment(id){
+  delete DATA.assignments[id];
+  saveData();
+  render();
+}
+
+function createDiscussion(subjectId){
+  const topic = document.getElementById('discussion-topic')?.value;
+  const desc = document.getElementById('discussion-desc')?.value;
+  if(!topic) return alert('Topic required');
+  const id = 'disc_'+Date.now();
+  DATA.discussions[id] = {id, subjectId, topic, description:desc, createdAt:new Date().toISOString(), replies:[]};
+  saveData();
+  setState({discussionCreateMode:false});
+  render();
+}
+
+function createHomework(subjectId){
+  const title = document.getElementById('homework-title')?.value;
+  const desc = document.getElementById('homework-desc')?.value;
+  const due = document.getElementById('homework-due')?.value;
+  if(!title) return alert('Title required');
+  const id = 'hw_'+Date.now();
+  DATA.homework[id] = {id, subjectId, title, description:desc, dueDate:due, createdAt:new Date().toISOString()};
+  saveData();
+  setState({homeworkCreateMode:false});
+  render();
+}
+
+function deleteHomework(id){
+  delete DATA.homework[id];
+  saveData();
+  render();
+}
+
+function createStudyGroup(classroomId){
+  const name = document.getElementById('studygroup-name')?.value;
+  const desc = document.getElementById('studygroup-desc')?.value;
+  if(!name) return alert('Name required');
+  const id = 'sg_'+Date.now();
+  DATA.studyGroups[id] = {id, classroomId, name, description:desc, members:[], createdAt:new Date().toISOString()};
+  saveData();
+  setState({studyGroupCreateMode:false});
+  render();
+}
+
+function createLessonPlan(subjectId){
+  const title = document.getElementById('lessonplan-title')?.value;
+  const date = document.getElementById('lessonplan-date')?.value;
+  const objectives = document.getElementById('lessonplan-objectives')?.value;
+  const activities = document.getElementById('lessonplan-activities')?.value;
+  if(!title) return alert('Title required');
+  const id = 'lp_'+Date.now();
+  DATA.lessonPlans[id] = {id, subjectId, title, date, objectives, activities, createdAt:new Date().toISOString()};
+  saveData();
+  setState({lessonPlanCreateMode:false});
+  render();
+}
+
+function deleteLessonPlan(id){
+  delete DATA.lessonPlans[id];
+  saveData();
+  render();
+}
+
+function saveGradeWeights(subjectId){
+  const tests = parseInt(document.getElementById('weight-tests')?.value||0);
+  const projects = parseInt(document.getElementById('weight-projects')?.value||0);
+  const assignments = parseInt(document.getElementById('weight-assignments')?.value||0);
+  const participation = parseInt(document.getElementById('weight-participation')?.value||0);
+  if(tests+projects+assignments+participation!==100) return alert('Weights must total 100%');
+  if(!DATA.subjects[subjectId]) return;
+  DATA.subjects[subjectId].gradeWeights = {tests, projects, assignments, participation};
+  saveData();
+  alert('Grade weights saved');
+  render();
+}
+
+function downloadProgressReport(studentId){
+  const st = DATA.students[studentId];
+  if(!st) return;
+  const subs = Object.values(DATA.testSubmissions).filter(s=>s.studentId===studentId);
+  const graded = subs.filter(s=>s.finalScore!==null&&s.finalScore!==undefined);
+  const content = `Progress Report for ${st.name}\n\nGraded Submissions: ${graded.length}\nAverage Score: ${graded.length>0?Math.round(graded.reduce((a,s)=>a+s.finalScore,0)/graded.length):'N/A'}%\n\n${graded.map(s=>`Test: ${DATA.tests[s.testId]?.title||'Unknown'} - ${s.finalScore}%`).join('\n')}`;
+  const blob = new Blob([content], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = st.name+'-progress-report.txt';
+  a.click();
 }
 
 (async function boot(){
