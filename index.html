@@ -2296,11 +2296,9 @@ function renderSubjectDetail(){
         <div class="tile">
           <h3>${esc(t.title)}</h3>
           <div class="meta">${t.questions.length} question${t.questions.length===1?'':'s'} · ${testSubmissions(t.id).length} submission${testSubmissions(t.id).length===1?'':'s'}</div>
-          ${t.published ? `<span class="due-pill" style="background:var(--marker-teal-dim);color:var(--marker-teal);">Published</span>` : `<span class="due-pill" style="background:var(--marker-yellow-dim);color:var(--marker-yellow);">Draft</span>`}
           <div class="tile-actions">
             <button class="btn btn-outline btn-sm" onclick="startTestBuilder('${s.id}','${t.id}')">Edit</button>
             <button class="btn btn-outline btn-sm" onclick="viewTestResults('${t.id}')">Results</button>
-            <button class="btn ${t.published?'btn-outline':'btn-primary'} btn-sm" onclick="togglePublish('test','${t.id}')">${t.published?'Unpublish':'Publish'}</button>
             <button class="btn btn-danger btn-sm" onclick="askConfirm('Delete this test?', ()=>deleteTest('${t.id}'))">Delete</button>
           </div>
         </div>
